@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Ubuntu Server Bootstrap Script
-# Usage: ./bootstrap_server.sh <username> [ssh_port] [--tailscale] [--ts-authkey <key>] [--ts-exit-node] [--ts-ssh]
+# Usage: ./bootstrap_server.sh <username> [ssh_port] [--tailscale] [--ts-authkey <key>] [--ts-ssh]
 
 set -e  # Exit on any error
 
@@ -45,7 +45,7 @@ fi
 
 # Check if username argument is provided
 if [ $# -lt 1 ]; then
-    print_error "Usage: $0 <username> [ssh_port] [--tailscale] [--ts-authkey <key>] [--ts-exit-node] [--ts-ssh]"
+    print_error "Usage: $0 <username> [ssh_port] [--tailscale] [--ts-authkey <key>] [--ts-ssh]"
     print_error "Example: $0 myuser 2222 --tailscale --ts-authkey tskey-auth-xxx"
     print_error ""
     print_error "Options:"
@@ -53,7 +53,6 @@ if [ $# -lt 1 ]; then
     print_error "  --ts-authkey <key>   Tailscale auth key for unattended provisioning"
     print_error "                       Generate at https://login.tailscale.com/admin/settings/keys"
     print_error "                       Use ephemeral keys for short-lived droplets"
-    print_error "  --ts-exit-node       Advertise this server as a Tailscale exit node"
     print_error "  --ts-ssh             Enable Tailscale SSH (replaces key-based SSH over tailnet)"
     exit 1
 fi
@@ -70,7 +69,6 @@ fi
 # Tailscale options (all off by default)
 INSTALL_TAILSCALE=false
 TS_AUTHKEY=""
-TS_EXIT_NODE=false
 TS_SSH=false
 
 # Parse optional flags (everything after the first two positional args)
@@ -79,7 +77,6 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --tailscale)    INSTALL_TAILSCALE=true ;;
         --ts-authkey)   TS_AUTHKEY="$2"; shift ;;
-        --ts-exit-node) TS_EXIT_NODE=true ;;
         --ts-ssh)       TS_SSH=true ;;
         *) print_warning "Unknown option: $1" ;;
     esac
@@ -91,9 +88,8 @@ print_status "Creating user: $USERNAME"
 print_status "SSH will be configured on port: $SSH_PORT"
 if [ "$INSTALL_TAILSCALE" = true ]; then
     print_status "Tailscale: ENABLED"
-    [ -n "$TS_AUTHKEY" ]    && print_status "  → Unattended auth key provided"
-    [ "$TS_EXIT_NODE" = true ] && print_status "  → Will advertise as exit node"
-    [ "$TS_SSH" = true ]    && print_status "  → Tailscale SSH enabled (SSH port closed to public)"
+    [ -n "$TS_AUTHKEY" ] && print_status "  → Unattended auth key provided"
+    [ "$TS_SSH" = true ] && print_status "  → Tailscale SSH enabled (SSH port closed to public)"
 else
     print_status "Tailscale: not requested (pass --tailscale to enable)"
 fi
@@ -494,18 +490,10 @@ if [ "$INSTALL_TAILSCALE" = true ]; then
         print_success "Tailscale pinned — excluded from automatic upgrades"
     fi
 
-    # Enable IP forwarding — required for exit node, harmless otherwise
-    if ! grep -q "net.ipv4.ip_forward" /etc/sysctl.d/99-tailscale.conf 2>/dev/null; then
-        echo 'net.ipv4.ip_forward = 1'  >> /etc/sysctl.d/99-tailscale.conf
-        echo 'net.ipv6.conf.all.forwarding = 1' >> /etc/sysctl.d/99-tailscale.conf
-        sysctl -p /etc/sysctl.d/99-tailscale.conf
-    fi
-
     # Build tailscale up arguments
     TS_UP_ARGS=""
-    [ -n "$TS_AUTHKEY" ]       && TS_UP_ARGS="$TS_UP_ARGS --authkey=$TS_AUTHKEY"
-    [ "$TS_EXIT_NODE" = true ] && TS_UP_ARGS="$TS_UP_ARGS --advertise-exit-node"
-    [ "$TS_SSH" = true ]       && TS_UP_ARGS="$TS_UP_ARGS --ssh"
+    [ -n "$TS_AUTHKEY" ] && TS_UP_ARGS="$TS_UP_ARGS --authkey=$TS_AUTHKEY"
+    [ "$TS_SSH" = true ] && TS_UP_ARGS="$TS_UP_ARGS --ssh"
 
     # Bring Tailscale up
     if [ -n "$TS_AUTHKEY" ]; then
@@ -530,12 +518,8 @@ if [ "$INSTALL_TAILSCALE" = true ]; then
         print_warning "Tailscale daemon started but NOT authenticated."
         print_warning "Run the following to complete setup:"
         echo ""
-        if [ "$TS_SSH" = true ] && [ "$TS_EXIT_NODE" = true ]; then
-            echo "  tailscale up --ssh --advertise-exit-node"
-        elif [ "$TS_SSH" = true ]; then
+        if [ "$TS_SSH" = true ]; then
             echo "  tailscale up --ssh"
-        elif [ "$TS_EXIT_NODE" = true ]; then
-            echo "  tailscale up --advertise-exit-node"
         else
             echo "  tailscale up"
         fi
@@ -612,8 +596,7 @@ echo -e "${GREEN}✓${NC} Sudo hardening (TTY required, logging enabled)"
 echo -e "${GREEN}✓${NC} Swap file (${SWAP_SIZE})"
 if [ "$INSTALL_TAILSCALE" = true ]; then
     echo -e "${GREEN}✓${NC} Tailscale VPN installed"
-    [ "$TS_EXIT_NODE" = true ] && echo -e "${GREEN}✓${NC} Tailscale exit node advertised"
-    [ "$TS_SSH" = true ]       && echo -e "${GREEN}✓${NC} Tailscale SSH enabled (public SSH port closed)"
+    [ "$TS_SSH" = true ] && echo -e "${GREEN}✓${NC} Tailscale SSH enabled (public SSH port closed)"
 fi
 echo ""
 print_status "Sudo logs: /var/log/sudo.log"
