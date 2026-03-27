@@ -3,7 +3,8 @@
 # Ubuntu Server Bootstrap Script
 # Usage: ./bootstrap_server.sh <username> [ssh_port] [--tailscale] [--ts-authkey <key>] [--ts-ssh]
 
-set -e  # Exit on any error
+# Exit on any error, treat unset variables as errors, and fail on pipeline errors
+set -euo pipefail
 
 # Color codes for output
 RED='\033[0;31m'
