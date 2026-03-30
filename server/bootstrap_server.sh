@@ -198,7 +198,7 @@ if [ -s "$ROOT_AUTHORIZED_KEYS" ]; then
     cp "$ROOT_AUTHORIZED_KEYS" "$SSH_DIR/authorized_keys"
     chown "$USERNAME:$USERNAME" "$SSH_DIR/authorized_keys"
     chmod 600 "$SSH_DIR/authorized_keys"
-    KEY_COUNT=$(wc -l < "$SSH_DIR/authorized_keys")
+    KEY_COUNT=$(grep -c . "$SSH_DIR/authorized_keys" || true)
     print_success "Copied $KEY_COUNT key(s) from root's authorized_keys to $SSH_DIR/authorized_keys"
 else
     sudo -u "$USERNAME" touch "$SSH_DIR/authorized_keys"
