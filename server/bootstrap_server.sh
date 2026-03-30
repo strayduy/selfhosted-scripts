@@ -290,9 +290,15 @@ print_success "Kernel security parameters configured"
 
 # 9. Secure shared memory
 print_status "Step 9: Securing shared memory..."
-if ! grep -q "tmpfs.*shm" /etc/fstab; then
-    echo "tmpfs /run/shm tmpfs defaults,noexec,nosuid 0 0" >> /etc/fstab
-    print_success "Shared memory secured"
+# Mount /dev/shm (the canonical path; /run/shm is just a symlink to it on Ubuntu 24.04).
+# noexec: prevent executing binaries from shared memory
+# nosuid: prevent setuid/setgid bits from taking effect
+# nodev:  prevent device files in shared memory
+if ! grep -q "tmpfs.*/dev/shm" /etc/fstab; then
+    echo "tmpfs /dev/shm tmpfs defaults,noexec,nosuid,nodev 0 0" >> /etc/fstab
+    # Apply immediately without requiring a reboot
+    mount -o remount,noexec,nosuid,nodev /dev/shm
+    print_success "Shared memory secured and remounted"
 else
     print_warning "Shared memory already configured"
 fi
