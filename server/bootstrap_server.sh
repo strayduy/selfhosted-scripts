@@ -385,7 +385,12 @@ print_success "Automatic security updates configured"
 print_status "Step 13: Configuring swap file..."
 SWAP_SIZE="2G"
 if [ ! -f /swapfile ]; then
-    fallocate -l "$SWAP_SIZE" /swapfile
+    # fallocate is fast but unsupported on some filesystems (e.g. btrfs, some XFS configs).
+    # Fall back to dd, which is universally compatible, if fallocate fails.
+    if ! fallocate -l "$SWAP_SIZE" /swapfile 2>/dev/null; then
+        print_warning "fallocate failed (unsupported filesystem?), falling back to dd..."
+        dd if=/dev/zero of=/swapfile bs=1M count=2048 status=progress
+    fi
     chmod 600 /swapfile
     mkswap /swapfile
     swapon /swapfile
