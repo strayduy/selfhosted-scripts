@@ -435,8 +435,10 @@ print_success "File permissions secured"
 print_status "Step 17: Configuring AppArmor..."
 systemctl enable apparmor
 systemctl start apparmor
-# aa-enforce can fail for individual broken profiles; continue rather than aborting the run.
-aa-enforce /etc/apparmor.d/* || print_warning "Some AppArmor profiles could not be enforced — review 'aa-status' after provisioning"
+# aa-enforce on the glob would also recurse into subdirectories like abstractions/,
+# generating errors for each. Target only top-level files instead.
+find /etc/apparmor.d -maxdepth 1 -type f -exec aa-enforce {} \; 2>/dev/null \
+    || print_warning "Some AppArmor profiles could not be enforced — review 'aa-status' after provisioning"
 print_success "AppArmor configured and enforcing"
 
 # 18. Configure sudo hardening
