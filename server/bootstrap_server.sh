@@ -320,7 +320,7 @@ print_success "UFW firewall configured (SSH port: $SSH_PORT only — add web por
 print_status "Step 11: Configuring Fail2Ban..."
 cat > /etc/fail2ban/jail.local << EOF
 [DEFAULT]
-bantime = 1h
+bantime = 12h
 findtime = 10m
 maxretry = 3
 backend = systemd
@@ -334,7 +334,7 @@ port = $SSH_PORT
 filter = sshd
 logpath = /var/log/auth.log
 maxretry = 3
-bantime = 24h
+bantime = 12h
 
 [apache-auth]
 enabled = false
