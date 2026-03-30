@@ -59,7 +59,24 @@ if [ $# -lt 1 ]; then
 fi
 
 USERNAME="$1"
-SSH_PORT="${2:-22}"  # Default to port 22 if not specified
+
+# The second positional argument is optional and must be numeric (SSH port).
+# We check it explicitly here rather than using a fragile inline shift trick,
+# so that a non-numeric $2 is rejected with a clear error rather than silently
+# treated as a flag or ignored.
+if [[ $# -ge 2 && "$2" =~ ^[0-9]+$ ]]; then
+    SSH_PORT="$2"
+    shift 2  # consume username + port; flags start at $1
+elif [[ $# -ge 2 && "$2" == --* ]]; then
+    SSH_PORT="22"  # $2 is a flag — no port supplied, leave it for flag parsing
+    shift 1        # consume username only
+elif [[ $# -ge 2 ]]; then
+    print_error "Invalid second argument: '$2'. Expected a numeric SSH port or a --flag."
+    exit 1
+else
+    SSH_PORT="22"  # only username was supplied
+    shift 1
+fi
 
 # Validate SSH port is a number in the valid range
 if ! [[ "$SSH_PORT" =~ ^[0-9]+$ ]] || [[ "$SSH_PORT" -lt 1 || "$SSH_PORT" -gt 65535 ]]; then
@@ -72,12 +89,16 @@ INSTALL_TAILSCALE=false
 TS_AUTHKEY=""
 TS_SSH=false
 
-# Parse optional flags (everything after the first two positional args)
-shift; [ -n "$1" ] && [[ "$1" =~ ^[0-9]+$ ]] && shift  # skip ssh_port if present
+# Parse optional flags — $@ now contains only flags (positional args already consumed above)
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --tailscale)    INSTALL_TAILSCALE=true ;;
-        --ts-authkey)   TS_AUTHKEY="$2"; shift ;;
+        --ts-authkey)
+            if [[ -z "${2:-}" || "$2" == --* ]]; then
+                print_error "--ts-authkey requires a value"
+                exit 1
+            fi
+            TS_AUTHKEY="$2"; shift ;;
         --ts-ssh)       TS_SSH=true ;;
         *) print_warning "Unknown option: $1" ;;
     esac
