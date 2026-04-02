@@ -65,8 +65,8 @@ print_section() { echo -e "\n${CYAN}━━━  $1  ━━━${NC}"; }
 # ── Constants ─────────────────────────────────────────────────────────────────
 # Pin to a specific version for reproducible deploys. To update, change this
 # value and re-run: podman compose -f $VW_COMPOSE_FILE pull && systemctl restart vaultwarden
-# v1.32.7 ships Vaultwarden 1.32.7; WebSockets are on the main port (v1.29+).
-VW_IMAGE="docker.io/vaultwarden/server:1.32.7"
+# v1.35.4 ships Vaultwarden 1.35.4; WebSockets are on the main port (v1.29+).
+VW_IMAGE="docker.io/vaultwarden/server:1.35.4"
 
 # Dedicated unprivileged system user — Podman runs rootless under this account
 # so a container escape cannot yield root on the host.
