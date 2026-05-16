@@ -1,0 +1,35 @@
+# Pre-commit hooks for selfhosted-scripts.
+#
+# One-time setup per clone:
+#   pre-commit install
+#
+# Run all hooks manually across the repo:
+#   pre-commit run --all-files
+#
+# Update hook versions:
+#   pre-commit autoupdate
+#
+# Bypass for a single commit (use sparingly):
+#   git commit --no-verify
+
+repos:
+  # General hygiene hooks.
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-merge-conflict
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
+      - id: check-yaml
+      - id: mixed-line-ending
+        args: [--fix=lf]
+
+  # Static analysis for shell scripts. See AGENTS.md for the style guide that
+  # complements these checks.
+  - repo: https://github.com/koalaman/shellcheck-precommit
+    rev: v0.10.0
+    hooks:
+      - id: shellcheck
+        args: [--severity=warning]

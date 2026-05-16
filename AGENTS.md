@@ -210,12 +210,20 @@ Every step must be safe to re-run. Prefer:
 
 1. Read the script you're touching end-to-end before editing — many lines
    have non-obvious "I hit this footgun once" comments.
-2. Lint with `shellcheck`:
+2. **Install the pre-commit hooks** once per clone:
    ```bash
-   shellcheck server/*.sh vaultwarden/*.sh
+   sudo apt-get install pre-commit   # or: pipx install pre-commit
+   pre-commit install
    ```
-   New warnings should be fixed or explicitly disabled with a justifying
-   `# shellcheck disable=SCxxxx` comment on the line above.
+   This wires up `.pre-commit-config.yaml`, which runs `shellcheck` and a
+   handful of whitespace/YAML hygiene hooks on every `git commit`. Run all
+   hooks across the repo without committing:
+   ```bash
+   pre-commit run --all-files
+   ```
+   New shellcheck warnings should be fixed or explicitly disabled with a
+   justifying `# shellcheck disable=SCxxxx` comment on the line above. To
+   bypass the hook for a WIP commit, use `git commit --no-verify` — sparingly.
 3. If the change is non-trivial, smoke-test on a throwaway Ubuntu 24.04
    droplet. Most bugs surface only against a real systemd + AppArmor setup.
 4. Commit messages: imperative mood, ~50 char subject, body explaining
