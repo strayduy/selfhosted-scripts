@@ -82,9 +82,11 @@ Podman v5+, and a smoke test.
 ### `vaultwarden/setup_vaultwarden.sh`
 
 Deploys [Vaultwarden](https://github.com/dani-garcia/vaultwarden) in a rootless
-Podman container, with TLS terminated by Vaultwarden itself using a certificate
-issued by Tailscale (no nginx, no Let's Encrypt). The service is reachable only
-over the tailnet — the port is bound to the Tailscale interface IP.
+Podman container, managed by a [Quadlet](https://docs.podman.io/en/latest/markdown/podman-systemd.unit.5.html)
+unit under the dedicated `vaultwarden` user's systemd session. TLS is terminated
+by Vaultwarden itself using a certificate issued by `tailscale cert` (no nginx,
+no Let's Encrypt). The service is reachable only over the tailnet — the port is
+bound to the Tailscale interface IP.
 
 ```
 Usage: sudo ./setup_vaultwarden.sh <tailscale-hostname> [--port 443] [--admin-token <token>]
