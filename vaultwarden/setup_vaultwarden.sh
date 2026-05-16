@@ -48,10 +48,21 @@
 
 set -euo pipefail
 
-# Source shared helpers (info/success/warn/error/section, require_root, ...)
+# Source shared helpers (info/success/warn/error/section, require_root, ...).
+# Two valid locations: the in-repo path (when invoked from a clone) and the
+# installed path (when invoked from /usr/local/sbin/, e.g. by the cert-refresh
+# cron job set up by this script's `setup` command).
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../lib/common.sh
-. "$SCRIPT_DIR/../lib/common.sh"
+for _common_candidate in \
+    "$SCRIPT_DIR/../lib/common.sh" \
+    "/usr/local/lib/selfhosted-scripts/common.sh"; do
+    if [[ -f "$_common_candidate" ]]; then
+        # shellcheck source=../lib/common.sh
+        . "$_common_candidate"
+        break
+    fi
+done
+unset _common_candidate
 
 # Back-compat aliases: this script's body still uses print_* names.
 # print_error is intentionally non-exiting (callers always follow it with an
@@ -81,7 +92,12 @@ VW_CONF_DIR="/etc/vaultwarden"
 VW_ENV_FILE="$VW_CONF_DIR/vaultwarden.conf"
 VW_COMPOSE_FILE="$VW_CONF_DIR/docker-compose.yml"
 VW_SYSTEMD_SERVICE="/etc/systemd/system/vaultwarden.service"
-CERT_REFRESH_SCRIPT="/usr/local/bin/vaultwarden-cert-refresh"
+
+# Where this script and its shared helpers are installed during `setup`, so the
+# cert-refresh cron job and post-setup invocations (`harden`, `cert-refresh`)
+# work even if the original clone is deleted.
+INSTALLED_SCRIPT="/usr/local/sbin/setup_vaultwarden.sh"
+INSTALLED_COMMON="/usr/local/lib/selfhosted-scripts/common.sh"
 
 # ── Root check ────────────────────────────────────────────────────────────────
 require_root
@@ -320,77 +336,31 @@ EOF
     print_info "(DNS → Enable HTTPS)"
     cmd_cert_refresh "$hostname"
 
-    # ── Step 4: Install cert-refresh cron and script ──────────────────────────
-    print_info "Step 4: Installing certificate refresh cron job..."
+    # ── Step 4: Install this script + cert-refresh cron job ──────────────────
+    print_info "Step 4: Installing script and certificate refresh cron job..."
 
-    cat > "$CERT_REFRESH_SCRIPT" << 'REFRESH_EOF'
-#!/bin/bash
-# Vaultwarden Tailscale cert refresh
-# Fetches a renewed cert from Tailscale and restarts Vaultwarden only if the
-# cert actually changed. Installed by setup_vaultwarden.sh — do not edit the
-# variable values below. Inlines all logic so it works even if
-# setup_vaultwarden.sh is moved or deleted.
-set -euo pipefail
-
-REFRESH_EOF
-
-    # Emit the variable values baked in at install time, then the rest of the
-    # script logic as a literal heredoc (single-quoted delimiter avoids
-    # expansion of \${} inside the logic block).
-    cat >> "$CERT_REFRESH_SCRIPT" << EOF
-HOSTNAME="$hostname"
-VW_CERT_DIR="$VW_CERT_DIR"
-VW_SYSTEM_USER="$VW_SYSTEM_USER"
-EOF
-
-    cat >> "$CERT_REFRESH_SCRIPT" << 'REFRESH_EOF'
-
-# Ensure cert dir exists with correct ownership/permissions — makes this script
-# self-contained even if called on a machine with a wiped cert dir.
-mkdir -p "$VW_CERT_DIR"
-chown root:"$VW_SYSTEM_USER" "$VW_CERT_DIR"
-chmod 750 "$VW_CERT_DIR"
-
-# Snapshot the fingerprint of the cert currently in place (if any).
-old_fingerprint=""
-if [ -f "$VW_CERT_DIR/fullchain.pem" ]; then
-    old_fingerprint=$(openssl x509 -noout -fingerprint -sha256 \
-        -in "$VW_CERT_DIR/fullchain.pem" 2>/dev/null || true)
-fi
-
-tailscale cert --cert-file "/var/lib/tailscale/certs/${HOSTNAME}.crt" \
-               --key-file  "/var/lib/tailscale/certs/${HOSTNAME}.key" \
-               "$HOSTNAME"
-
-cp "/var/lib/tailscale/certs/${HOSTNAME}.crt" "$VW_CERT_DIR/fullchain.pem"
-cp "/var/lib/tailscale/certs/${HOSTNAME}.key" "$VW_CERT_DIR/privkey.pem"
-
-chown root:"$VW_SYSTEM_USER" "$VW_CERT_DIR/privkey.pem" "$VW_CERT_DIR/fullchain.pem"
-chmod 640 "$VW_CERT_DIR/privkey.pem"
-chmod 644 "$VW_CERT_DIR/fullchain.pem"
-
-new_fingerprint=$(openssl x509 -noout -fingerprint -sha256 \
-    -in "$VW_CERT_DIR/fullchain.pem" 2>/dev/null || true)
-
-if [ "$old_fingerprint" = "$new_fingerprint" ] && [ -n "$new_fingerprint" ]; then
-    echo "$(date): Certificate unchanged — Vaultwarden restart skipped"
-elif systemctl is-active --quiet vaultwarden 2>/dev/null; then
-    systemctl restart vaultwarden
-    echo "$(date): Certificate refreshed and Vaultwarden restarted"
-else
-    echo "$(date): Certificate refreshed (Vaultwarden not running — skipped restart)"
-fi
-REFRESH_EOF
-
-    chmod 700 "$CERT_REFRESH_SCRIPT"
+    # Install the script and its sourced helper to fixed paths so that the
+    # cert-refresh cron job and the post-setup `harden` / `cert-refresh`
+    # subcommands work even if the original clone directory is deleted.
+    #
+    # Previously this step generated a separate /usr/local/bin/vaultwarden-cert-refresh
+    # wrapper that inlined the cert-refresh logic. That duplicated cmd_cert_refresh()
+    # and the two implementations could drift. Now cron just calls back into
+    # this script's `cert-refresh` subcommand — single source of truth.
+    install -m 755 "${BASH_SOURCE[0]}" "$INSTALLED_SCRIPT"
+    install -d -m 755 "$(dirname "$INSTALLED_COMMON")"
+    install -m 644 "$SCRIPT_DIR/../lib/common.sh" "$INSTALLED_COMMON"
+    print_success "Script installed at $INSTALLED_SCRIPT"
 
     # Run daily at 04:00 — Tailscale certs are valid for ~90 days so this is
-    # ample headroom. tailscale cert is a no-op if the cert is still fresh.
-    echo "0 4 * * * root $CERT_REFRESH_SCRIPT >> /var/log/vaultwarden-cert-refresh.log 2>&1" \
-        > /etc/cron.d/vaultwarden-cert-refresh
-
-    print_success "Cert refresh script installed at $CERT_REFRESH_SCRIPT"
-    print_success "Cron job installed: daily at 04:00"
+    # ample headroom. `tailscale cert` is a no-op if the cert is still fresh,
+    # and cmd_cert_refresh() skips the Vaultwarden restart if the cert
+    # fingerprint is unchanged.
+    cat > /etc/cron.d/vaultwarden-cert-refresh << CRON_EOF
+# Vaultwarden Tailscale cert refresh — managed by setup_vaultwarden.sh
+0 4 * * * root $INSTALLED_SCRIPT cert-refresh $hostname >> /var/log/vaultwarden-cert-refresh.log 2>&1
+CRON_EOF
+    print_success "Cron job installed: daily at 04:00 (calls $INSTALLED_SCRIPT cert-refresh)"
 
     # ── Step 5: Write env config ──────────────────────────────────────────────
     print_info "Step 5: Writing Vaultwarden config to $VW_ENV_FILE..."
@@ -571,7 +541,7 @@ EOF
     print_info "  Restart:       systemctl restart vaultwarden"
     print_info "  Config:        $VW_ENV_FILE"
     print_info "  Data:          $VW_DATA_DIR"
-    print_info "  Cert refresh:  $CERT_REFRESH_SCRIPT"
+    print_info "  Cert refresh:  $INSTALLED_SCRIPT cert-refresh $hostname  (cron: /etc/cron.d/vaultwarden-cert-refresh)"
     echo ""
     print_info "To update Vaultwarden in future:"
     print_info "  sudo -u $VW_SYSTEM_USER podman compose -f $VW_COMPOSE_FILE pull"
