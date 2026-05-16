@@ -1,4 +1,5 @@
 # lib/common.sh
+# shellcheck shell=bash
 #
 # Shared helpers for the scripts in this repo. Source from a script with:
 #

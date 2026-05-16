@@ -27,7 +27,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/../lib/common.sh"
 
 # Preserve the colour-variable names used in the final summary block.
-RED="$_C_RED"; GREEN="$_C_GREEN"; YELLOW="$_C_YELLOW"; NC="$_C_NC"
+# Back-compat aliases for the colour vars used in this script's banners.
+# RED is intentionally omitted — error() handles red output itself.
+GREEN="$_C_GREEN"; YELLOW="$_C_YELLOW"; NC="$_C_NC"
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 # Populated by parse_args(); declared up here so set -u doesn't fire if any
