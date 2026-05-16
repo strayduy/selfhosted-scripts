@@ -23,6 +23,8 @@
 #   - MagicDNS is enabled in the Tailscale admin console (DNS → Enable MagicDNS)
 #   - HTTPS certificates are enabled in the Tailscale admin console (DNS → Enable HTTPS)
 #   - UFW (or equivalent) is already configured
+#   - A 'vaultwarden' rootless-Podman service account already exists. Create it by
+#     running, from this repo:  sudo ./server/setup_rootless_podman.sh vaultwarden
 #
 # Usage:
 #   sudo ./setup_vaultwarden.sh <tailscale-hostname> [options]
@@ -103,6 +105,34 @@ INSTALLED_COMMON="/usr/local/lib/selfhosted-scripts/common.sh"
 require_root
 
 # ── Tailscale check ───────────────────────────────────────────────────────────
+# Verify the dedicated rootless-Podman service account this script expects.
+# The user must already exist (created by setup_rootless_podman.sh) — we don't
+# create it on the fly here, because doing so would skip all the rootless-
+# Podman setup (subuid/subgid ranges, cgroup delegation, AppArmor patches,
+# linger, port-binding sysctl) that script handles.
+check_system_user() {
+    if ! id "$VW_SYSTEM_USER" &>/dev/null; then
+        print_error "System user '$VW_SYSTEM_USER' does not exist."
+        print_error ""
+        print_error "This script runs Vaultwarden as a dedicated rootless-Podman"
+        print_error "service account that must be created beforehand. From the"
+        print_error "root of this repo, run:"
+        print_error ""
+        print_error "    sudo ./server/setup_rootless_podman.sh $VW_SYSTEM_USER"
+        print_error ""
+        print_error "Then re-run this script."
+        exit 1
+    fi
+
+    # Confirm linger is enabled — without it, the user's systemd session
+    # (and therefore any container) is torn down when no login is active.
+    if ! loginctl show-user "$VW_SYSTEM_USER" 2>/dev/null | grep -q "Linger=yes"; then
+        print_error "User '$VW_SYSTEM_USER' exists but linger is not enabled."
+        print_error "Re-run: sudo ./server/setup_rootless_podman.sh $VW_SYSTEM_USER"
+        exit 1
+    fi
+}
+
 check_tailscale() {
     if ! command -v tailscale &>/dev/null; then
         print_error "Tailscale is not installed. Install and join your tailnet first."
@@ -231,6 +261,7 @@ cmd_setup() {
     fi
 
     # ── Preflight checks ──────────────────────────────────────────────────────
+    check_system_user
     check_tailscale
 
     # Resolve the Tailscale IP for this machine — used to bind Rocket to the
