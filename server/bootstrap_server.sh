@@ -6,43 +6,27 @@
 # Exit on any error, treat unset variables as errors, and fail on pipeline errors
 set -euo pipefail
 
-# Color codes for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+# Source shared helpers (info/success/warn/error, require_root, require_ubuntu, ...)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../lib/common.sh
+. "$SCRIPT_DIR/../lib/common.sh"
 
-# Function to print colored output
-print_status() {
-    echo -e "${BLUE}[INFO]${NC} $1"
-}
+# Back-compat aliases: this script's body still uses print_* names. New scripts
+# should call info/success/warn/error directly.
+#
+# Note: the original print_error did NOT exit (callers always followed it with
+# an explicit `exit 1`), so we preserve that — we cannot alias to error() which
+# does exit. Keep it labelled [ERROR] for output continuity.
+print_status()  { info "$@"; }
+print_success() { success "$@"; }
+print_warning() { warn "$@"; }
+print_error()   { echo "${_C_RED}[ERROR]${_C_NC} $*" >&2; }
 
-print_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
-}
+# Preserve the colour-variable names used in the final summary block.
+RED="$_C_RED"; GREEN="$_C_GREEN"; YELLOW="$_C_YELLOW"; NC="$_C_NC"
 
-print_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
-}
-
-print_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
-
-# Check if script is run as root
-if [[ $EUID -ne 0 ]]; then
-   print_error "This script must be run as root (use sudo)"
-   exit 1
-fi
-
-# Verify this is Ubuntu 24.04 (Noble)
-# The script targets 24.04 specifically; behaviour on other versions is untested.
-if ! grep -q 'VERSION_ID="24.04"' /etc/os-release 2>/dev/null; then
-    print_error "This script requires Ubuntu 24.04 (Noble). Detected:"
-    grep -E '^(NAME|VERSION)=' /etc/os-release 2>/dev/null || echo "  (unknown OS)"
-    exit 1
-fi
+require_root
+require_ubuntu 24.04
 
 # Check if username argument is provided
 if [ $# -lt 1 ]; then

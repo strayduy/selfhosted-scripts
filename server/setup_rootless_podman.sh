@@ -6,6 +6,11 @@
 
 set -euo pipefail
 
+# Source shared helpers (info/success/warn/error, require_root, require_ubuntu, ...)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../lib/common.sh
+. "$SCRIPT_DIR/../lib/common.sh"
+
 # ── Configuration ─────────────────────────────────────────────────────────────
 
 PODMAN_USER="${1:-podman}"
@@ -15,17 +20,6 @@ SUBUID_COUNT=65536  # 65536 UIDs = a full "sub-namespace" range
 # setup_storage() and smoke_test(). Declare it here so set -u doesn't
 # fire if something calls those functions out of order.
 PODMAN_UID=""
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-info()    { echo "[INFO]  $*"; }
-success() { echo "[OK]    $*"; }
-warn()    { echo "[WARN]  $*"; }
-error()   { echo "[ERROR] $*" >&2; exit 1; }
-
-require_root() {
-  [[ $EUID -eq 0 ]] || error "This script must be run as root (use sudo)."
-}
 
 # ── Preflight checks ──────────────────────────────────────────────────────────
 #

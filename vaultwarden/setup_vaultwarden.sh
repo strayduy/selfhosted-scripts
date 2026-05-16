@@ -48,19 +48,22 @@
 
 set -euo pipefail
 
-# ── Colours ───────────────────────────────────────────────────────────────────
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-NC='\033[0m'
+# Source shared helpers (info/success/warn/error/section, require_root, ...)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../lib/common.sh
+. "$SCRIPT_DIR/../lib/common.sh"
 
-print_info()    { echo -e "${BLUE}[INFO]${NC}    $1"; }
-print_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
-print_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
-print_error()   { echo -e "${RED}[ERROR]${NC}   $1"; }
-print_section() { echo -e "\n${CYAN}━━━  $1  ━━━${NC}"; }
+# Back-compat aliases: this script's body still uses print_* names.
+# print_error is intentionally non-exiting (callers always follow it with an
+# explicit `exit 1`); don't alias to error() which would exit.
+print_info()    { info "$@"; }
+print_success() { success "$@"; }
+print_warning() { warn "$@"; }
+print_error()   { echo "${_C_RED}[ERROR]${_C_NC} $*" >&2; }
+print_section() { section "$@"; }
+
+# Preserve the colour-variable names used in the final summary block.
+GREEN="$_C_GREEN"; YELLOW="$_C_YELLOW"; NC="$_C_NC"
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 # Pin to a specific version for reproducible deploys. To update, change this
@@ -81,10 +84,7 @@ VW_SYSTEMD_SERVICE="/etc/systemd/system/vaultwarden.service"
 CERT_REFRESH_SCRIPT="/usr/local/bin/vaultwarden-cert-refresh"
 
 # ── Root check ────────────────────────────────────────────────────────────────
-if [[ $EUID -ne 0 ]]; then
-    print_error "This script must be run as root (use sudo)"
-    exit 1
-fi
+require_root
 
 # ── Tailscale check ───────────────────────────────────────────────────────────
 check_tailscale() {
