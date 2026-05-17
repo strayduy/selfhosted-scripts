@@ -641,23 +641,26 @@ show_security_status() {
     info "=== SECURITY STATUS ==="
     echo ""
     info "UFW Firewall Status:"
-    ufw status
+    ufw status || warn "ufw status failed"
 
     echo ""
     info "Fail2Ban Status:"
-    fail2ban-client status
+    fail2ban-client status || warn "fail2ban-client status failed"
 
     echo ""
     info "AppArmor Status:"
-    aa-status --enabled
+    aa-status --enabled || warn "aa-status failed"
 
     echo ""
     info "Swap Status:"
-    swapon --show
+    swapon --show || warn "swapon --show failed"
 
     echo ""
     info "Time Synchronization:"
-    chronyc sources
+    # chrony's control socket can briefly return 503 (e.g. "Not synchronised")
+    # right after install while it's still bootstrapping. This is purely a
+    # status display, so don't let it abort the whole bootstrap.
+    chronyc sources || warn "chronyc sources failed (chrony may still be starting up)"
 }
 
 # ── Step 22: Final summary ────────────────────────────────────────────────────
