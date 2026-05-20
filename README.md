@@ -22,8 +22,11 @@ selfhosted-scripts/
 1. **Provision** a fresh Ubuntu 24.04 droplet on Digital Ocean.
 2. **Bootstrap** as `root`:
    ```bash
-   scp server/bootstrap_server.sh root@<ip>:/root/
-   ssh root@<ip> 'bash /root/bootstrap_server.sh <username> 2222 --tailscale --ts-authkey tskey-auth-...'
+   ssh root@<ip>
+   apt-get update && apt-get install -y git
+   git clone https://github.com/strayduy/selfhosted-scripts.git
+   cd selfhosted-scripts
+   ./server/bootstrap_server.sh <username> 2222 --tailscale --ts-authkey tskey-auth-...
    ```
    This creates the admin user, hardens SSH, enables UFW/fail2ban/unattended-upgrades,
    and optionally joins the machine to Tailscale.
