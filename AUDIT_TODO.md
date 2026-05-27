@@ -75,7 +75,7 @@ Tick items off as they land.
       Call `info` / `success` / `warn` / `error` / `section` directly.
       Where `error()`'s implicit exit is wrong, call `warn ...; exit 1`
       explicitly (or introduce a `die()` helper).
-- [ ] **[CONVENTION]** Delete the `GREEN` / `YELLOW` / `NC` back-compat
+- [x] **[CONVENTION]** Delete the `GREEN` / `YELLOW` / `NC` back-compat
       aliases in `bootstrap_server.sh` and `setup_vaultwarden.sh`. Rewrite
       the `echo -e "${YELLOW}..."` lines in the summary blocks as `warn` /
       `info` calls.

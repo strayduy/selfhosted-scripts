@@ -27,10 +27,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$SCRIPT_DIR/../lib/common.sh"
 
-# Preserve the colour-variable names used in the final summary block.
-# Back-compat aliases for the colour vars used in this script's banners.
-# RED is intentionally omitted — error() handles red output itself.
-GREEN="$_C_GREEN"; YELLOW="$_C_YELLOW"; NC="$_C_NC"
+
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 # Populated by parse_args(); declared up here so set -u doesn't fire if any
@@ -689,39 +686,39 @@ print_summary() {
     success "Server bootstrapping completed successfully!"
     echo ""
     warn "=== CRITICAL REMINDERS ==="
-    echo -e "${YELLOW}1. SSH is now on port $SSH_PORT - connect with: ssh -p $SSH_PORT $USERNAME@your_server_ip${NC}"
-    echo -e "${YELLOW}2. Test SSH connection with new user and port BEFORE closing this session${NC}"
-    echo -e "${YELLOW}3. Password authentication is DISABLED${NC}"
-    echo -e "${YELLOW}4. Root login is DISABLED${NC}"
-    echo -e "${YELLOW}5. Only user '$USERNAME' can SSH to this server${NC}"
-    echo -e "${YELLOW}6. Automatic security updates are ENABLED${NC}"
-    echo -e "${YELLOW}7. sudo commands are fully logged to /var/log/sudo.log${NC}"
+    warn "1. SSH is now on port $SSH_PORT - connect with: ssh -p $SSH_PORT $USERNAME@your_server_ip"
+    warn "2. Test SSH connection with new user and port BEFORE closing this session"
+    warn "3. Password authentication is DISABLED"
+    warn "4. Root login is DISABLED"
+    warn "5. Only user '$USERNAME' can SSH to this server"
+    warn "6. Automatic security updates are ENABLED"
+    warn "7. sudo commands are fully logged to /var/log/sudo.log"
     if [[ "$INSTALL_TAILSCALE" == true && "$TS_SSH" == true && -n "$TS_AUTHKEY" ]]; then
-        echo -e "${YELLOW}8. Public SSH port is CLOSED — connect via: ssh $USERNAME@<tailscale-hostname>${NC}"
-        echo -e "${YELLOW}   Tailscale must be authenticated on your client device${NC}"
+        warn "8. Public SSH port is CLOSED — connect via: ssh $USERNAME@<tailscale-hostname>"
+        warn "   Tailscale must be authenticated on your client device"
     fi
     if [[ "$INSTALL_TAILSCALE" == true && "$TS_SSH" == true ]]; then
-        echo -e "${YELLOW}9. Tailscale SSH bypasses sshd entirely — PermitRootLogin has no effect over the tailnet.${NC}"
-        echo -e "${YELLOW}   Restrict root login via your Tailscale ACL policy:${NC}"
-        echo -e "${YELLOW}   https://login.tailscale.com/admin/acls${NC}"
-        echo -e "${YELLOW}   Ensure your SSH ACL rule specifies users: [\"$USERNAME\"] and omits root.${NC}"
+        warn "9. Tailscale SSH bypasses sshd entirely — PermitRootLogin has no effect over the tailnet."
+        warn "   Restrict root login via your Tailscale ACL policy:"
+        warn "   https://login.tailscale.com/admin/acls"
+        warn "   Ensure your SSH ACL rule specifies users: [\"$USERNAME\"] and omits root."
     fi
     echo ""
     warn "=== SECURITY FEATURES ENABLED ==="
-    echo -e "${GREEN}✓${NC} UFW Firewall (SSH only: $SSH_PORT — add web ports manually if needed)"
-    echo -e "${GREEN}✓${NC} Fail2Ban (12h SSH bans)"
-    echo -e "${GREEN}✓${NC} Automatic security updates"
-    echo -e "${GREEN}✓${NC} Kernel security hardening"
-    echo -e "${GREEN}✓${NC} Strong password policies (pam_faillock)"
-    echo -e "${GREEN}✓${NC} SSH hardened (modern ciphers/MACs/KEX only)"
-    echo -e "${GREEN}✓${NC} AppArmor enforcement"
-    echo -e "${GREEN}✓${NC} Time synchronization"
-    echo -e "${GREEN}✓${NC} Secure file permissions"
-    echo -e "${GREEN}✓${NC} Sudo hardening (TTY required, logging enabled)"
-    echo -e "${GREEN}✓${NC} Swap file (${SWAP_SIZE})"
+    info "✓ UFW Firewall (SSH only: $SSH_PORT — add web ports manually if needed)"
+    info "✓ Fail2Ban (12h SSH bans)"
+    info "✓ Automatic security updates"
+    info "✓ Kernel security hardening"
+    info "✓ Strong password policies (pam_faillock)"
+    info "✓ SSH hardened (modern ciphers/MACs/KEX only)"
+    info "✓ AppArmor enforcement"
+    info "✓ Time synchronization"
+    info "✓ Secure file permissions"
+    info "✓ Sudo hardening (TTY required, logging enabled)"
+    info "✓ Swap file (${SWAP_SIZE})"
     if [[ "$INSTALL_TAILSCALE" == true ]]; then
-        echo -e "${GREEN}✓${NC} Tailscale VPN installed"
-        [[ "$TS_SSH" == true ]] && echo -e "${GREEN}✓${NC} Tailscale SSH enabled (public SSH port closed)"
+        info "✓ Tailscale VPN installed"
+        [[ "$TS_SSH" == true ]] && info "✓ Tailscale SSH enabled (public SSH port closed)"
     fi
     echo ""
     info "Sudo logs: /var/log/sudo.log"

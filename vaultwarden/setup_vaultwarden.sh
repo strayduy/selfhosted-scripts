@@ -69,8 +69,7 @@ for _common_candidate in \
 done
 unset _common_candidate
 
-# Preserve the colour-variable names used in the final summary block.
-GREEN="$_C_GREEN"; YELLOW="$_C_YELLOW"; NC="$_C_NC"
+
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 # Pin to a specific version for reproducible deploys. To update, change this
@@ -571,15 +570,15 @@ EOF
     # ── Done ──────────────────────────────────────────────────────────────────
     section "Vaultwarden setup complete"
     echo ""
-    echo -e "  ${GREEN}https://$hostname${NC}"
+    info "https://$hostname"
     echo ""
     warn "Next steps:"
-    echo -e "  ${YELLOW}1. Visit https://$hostname and create your account${NC}"
-    echo -e "  ${YELLOW}2. Visit https://$hostname/admin to configure Vaultwarden${NC}"
-    echo -e "     ${YELLOW}Admin token: sudo cat $token_reveal_file${NC}"
-    echo -e "     ${YELLOW}Delete after use: sudo rm $token_reveal_file${NC}"
-    echo -e "  ${YELLOW}3. Once your account is set up, lock down the instance:${NC}"
-    echo -e "     ${YELLOW}sudo $0 harden${NC}"
+    warn "1. Visit https://$hostname and create your account"
+    warn "2. Visit https://$hostname/admin to configure Vaultwarden"
+    warn "   Admin token: sudo cat $token_reveal_file"
+    warn "   Delete after use: sudo rm $token_reveal_file"
+    warn "3. Once your account is set up, lock down the instance:"
+    warn "   sudo $0 harden"
     echo ""
     info "Useful commands:"
     info "  Logs:          sudo -u $VW_SYSTEM_USER journalctl --user-unit vaultwarden -f"
