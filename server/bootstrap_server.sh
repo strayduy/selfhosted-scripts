@@ -121,7 +121,6 @@ print_plan() {
 
 update_system() {
     info "Step 1: Updating system packages..."
-    export DEBIAN_FRONTEND=noninteractive
     apt-get update
     apt-get upgrade -y
     _detect_kernel_upgrade
@@ -800,6 +799,8 @@ print_summary() {
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 main() {
+    export DEBIAN_FRONTEND=noninteractive
+
     require_root
     require_ubuntu 24.04
 

@@ -132,7 +132,7 @@ Tick items off as they land.
       hardening then applies to a kernel that isn't running. Detect and
       either reboot or print a prominent "reboot required before
       provisioning further" warning at the end.
-- [ ] **[POLISH]** `bootstrap_server.sh` — `export DEBIAN_FRONTEND=noninteractive`
+- [x] **[POLISH]** `bootstrap_server.sh` — `export DEBIAN_FRONTEND=noninteractive`
       once at the top of `main()` instead of inside `update_system`. As-is,
       later `apt-get` calls (e.g. `install_tailscale`'s `apt-get install
       "/tmp/${ts_deb}"`) run without it.
