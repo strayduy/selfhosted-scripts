@@ -127,7 +127,7 @@ Tick items off as they land.
       complain profiles into enforce mode, which then has to be undone by
       `setup_rootless_podman.sh`. Either narrow the enforce list or
       document the ordering dependency loudly.
-- [ ] **[POLISH]** `bootstrap_server.sh: install_tailscale` — `apt-get
+- [x] **[POLISH]** `bootstrap_server.sh: install_tailscale` — `apt-get
       upgrade -y` earlier in the script may have upgraded the kernel; some
       hardening then applies to a kernel that isn't running. Detect and
       either reboot or print a prominent "reboot required before

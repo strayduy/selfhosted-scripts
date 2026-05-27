@@ -39,6 +39,7 @@ INSTALL_TAILSCALE=false
 TS_AUTHKEY=""
 TS_SSH=false
 SWAP_SIZE="2G"
+REBOOT_REQUIRED=false
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
 
@@ -123,7 +124,42 @@ update_system() {
     export DEBIAN_FRONTEND=noninteractive
     apt-get update
     apt-get upgrade -y
+    _detect_kernel_upgrade
     success "System packages updated successfully"
+}
+
+# Check whether apt-get upgrade installed a new kernel that isn't running yet.
+# Sets REBOOT_REQUIRED=true if so, and emits an early warning.
+# Detection strategy (both checked, either suffices):
+#   1. Ubuntu's standard /var/run/reboot-required flag written by update-notifier-common.
+#   2. Direct comparison of uname -r vs. the newest vmlinuz-* in /boot.
+_detect_kernel_upgrade() {
+    local running_kernel
+    running_kernel=$(uname -r)
+
+    # Strategy 1: Ubuntu's reboot-required marker (set by apt on kernel upgrades)
+    if [[ -f /var/run/reboot-required ]]; then
+        REBOOT_REQUIRED=true
+        warn "Kernel upgrade detected (running: ${running_kernel})."
+        warn "A reboot is required before provisioning further services."
+        return
+    fi
+
+    # Strategy 2: compare uname -r against the newest vmlinuz-* in /boot.
+    # Filenames look like: vmlinuz-6.8.0-57-generic  (excludes *rescue* kernels).
+    local newest_kernel
+    newest_kernel=$(
+        find /boot -maxdepth 1 -name 'vmlinuz-*' ! -name '*rescue*' \
+            | sed 's|.*/vmlinuz-||' \
+            | sort -V \
+            | tail -1
+    )
+
+    if [[ -n "$newest_kernel" && "$running_kernel" != "$newest_kernel" ]]; then
+        REBOOT_REQUIRED=true
+        warn "Kernel upgrade detected: running ${running_kernel}, installed ${newest_kernel}."
+        warn "A reboot is required before provisioning further services."
+    fi
 }
 
 # ── Step 2: Install essential security packages ───────────────────────────────
@@ -743,6 +779,22 @@ print_summary() {
     echo ""
     info "Sudo logs: /var/log/sudo.log"
     info "Run 'lynis audit system' for a detailed security assessment"
+
+    # Print a highly-visible reboot warning last so it is not scrolled off.
+    if [[ "$REBOOT_REQUIRED" == true ]]; then
+        echo ""
+        warn "╔══════════════════════════════════════════════════════════════════════╗"
+        warn "║           *** REBOOT REQUIRED BEFORE FURTHER PROVISIONING ***       ║"
+        warn "║                                                                      ║"
+        warn "║  apt-get upgrade installed a new kernel that is NOT yet running.     ║"
+        warn "║  Some hardening parameters written above apply only to the new       ║"
+        warn "║  kernel.  Until you reboot, the system is running an older kernel    ║"
+        warn "║  that may be missing security patches.                               ║"
+        warn "║                                                                      ║"
+        warn "║  Reboot now:   systemctl reboot                                      ║"
+        warn "║  Then re-run any app-setup scripts (setup_vaultwarden.sh, etc.).     ║"
+        warn "╚══════════════════════════════════════════════════════════════════════╝"
+    fi
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────
