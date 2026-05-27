@@ -23,7 +23,7 @@ Tick items off as they land.
 - [x] **[BUG]** `bootstrap_server.sh: print_summary` — claims "Fail2Ban (24h
       SSH bans)" but `jail.local` sets `bantime = 12h`. Pick one and make
       them match.
-- [ ] **[BUG]** `bootstrap_server.sh: setup_user_ssh_keys` — empty
+- [x] **[BUG]** `bootstrap_server.sh: setup_user_ssh_keys` — empty
       `authorized_keys` only warns. If password auth is being disabled and
       `--ts-ssh` was not requested, this is a guaranteed lockout. Promote
       the warning to an `error` in that combination.

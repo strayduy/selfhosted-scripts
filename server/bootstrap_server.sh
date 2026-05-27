@@ -224,8 +224,16 @@ setup_user_ssh_keys() {
     else
         sudo -u "$USERNAME" touch "$ssh_dir/authorized_keys"
         sudo -u "$USERNAME" chmod 600 "$ssh_dir/authorized_keys"
+        # Password auth is always disabled by configure_sshd. With no keys and no
+        # Tailscale SSH, there is no way back in — abort before we lock ourselves out.
+        if [[ "$TS_SSH" == false ]]; then
+            error "No keys found in $root_authorized_keys and --ts-ssh was not requested." \
+                  "configure_sshd will disable password auth, guaranteeing a lockout." \
+                  "Add your public key to /root/.ssh/authorized_keys and re-run, or pass --ts-ssh."
+        fi
         warn "No keys found in $root_authorized_keys — authorized_keys created empty"
-        warn "Remember to add your public key to $ssh_dir/authorized_keys before disconnecting"
+        warn "--ts-ssh is enabled; you can still reach the server over the tailnet."
+        warn "Remember to add your public key to $ssh_dir/authorized_keys before relying on key auth."
     fi
 }
 
