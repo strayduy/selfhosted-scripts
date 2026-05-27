@@ -434,7 +434,18 @@ configure_swap() {
     # Fall back to dd, which is universally compatible, if fallocate fails.
     if ! fallocate -l "$SWAP_SIZE" /swapfile 2>/dev/null; then
         warn "fallocate failed (unsupported filesystem?), falling back to dd..."
-        dd if=/dev/zero of=/swapfile bs=1M count=2048 status=progress
+        # Derive block count (MiB) from SWAP_SIZE so dd honours the configured size.
+        # Accepted formats: <N>G / <N>g  →  N*1024 MiB
+        #                   <N>M / <N>m  →  N MiB
+        local swap_mib
+        if [[ "$SWAP_SIZE" =~ ^([0-9]+)[Gg]$ ]]; then
+            swap_mib=$(( BASH_REMATCH[1] * 1024 ))
+        elif [[ "$SWAP_SIZE" =~ ^([0-9]+)[Mm]$ ]]; then
+            swap_mib=${BASH_REMATCH[1]}
+        else
+            error "Cannot derive dd block count from SWAP_SIZE='$SWAP_SIZE'; expected format like '2G' or '512M'"
+        fi
+        dd if=/dev/zero of=/swapfile bs=1M count="$swap_mib" status=progress
     fi
     chmod 600 /swapfile
     mkswap /swapfile

@@ -13,7 +13,7 @@ Tick items off as they land.
 
 ## Tier 1 — Real bugs and lockout risks
 
-- [ ] **[BUG]** `bootstrap_server.sh: configure_swap` — `dd` fallback path is
+- [x] **[BUG]** `bootstrap_server.sh: configure_swap` — `dd` fallback path is
       hardcoded to `count=2048` (2 G) and ignores `SWAP_SIZE`. Derive the
       count from `SWAP_SIZE` or refuse to fall back unless the size matches.
 - [ ] **[BUG]** `bootstrap_server.sh: secure_file_permissions` — unquoted
