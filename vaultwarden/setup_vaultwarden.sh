@@ -265,7 +265,7 @@ cmd_harden() {
 # ══════════════════════════════════════════════════════════════════════════════
 cmd_setup() {
     # ── Parse arguments ───────────────────────────────────────────────────────
-    local hostname="$1"; shift
+    local hostname="${1:-}"; shift
     local port=443 admin_token=""
 
     while [[ $# -gt 0 ]]; do

@@ -27,7 +27,7 @@ Tick items off as they land.
       `authorized_keys` only warns. If password auth is being disabled and
       `--ts-ssh` was not requested, this is a guaranteed lockout. Promote
       the warning to an `error` in that combination.
-- [ ] **[BUG]** `setup_vaultwarden.sh: cmd_setup` — `local hostname="$1"`
+- [x] **[BUG]** `setup_vaultwarden.sh: cmd_setup` — `local hostname="$1"`
       aborts under `set -u` when no args are given, before the friendly
       "hostname is required" error. Use `"${1:-}"` and validate.
 - [ ] **[BUG]** `setup_vaultwarden.sh: cmd_cert_refresh` — accepts an empty
