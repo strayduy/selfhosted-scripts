@@ -16,7 +16,7 @@ Tick items off as they land.
 - [x] **[BUG]** `bootstrap_server.sh: configure_swap` — `dd` fallback path is
       hardcoded to `count=2048` (2 G) and ignores `SWAP_SIZE`. Derive the
       count from `SWAP_SIZE` or refuse to fall back unless the size matches.
-- [ ] **[BUG]** `bootstrap_server.sh: secure_file_permissions` — unquoted
+- [x] **[BUG]** `bootstrap_server.sh: secure_file_permissions` — unquoted
       globs (`chmod 600 /etc/ssh/ssh_host_*_key`) abort under `set -u` on
       images that ship without host keys. Wrap in `shopt -s nullglob` or
       switch to `find … -exec chmod`.

@@ -490,12 +490,12 @@ disable_unused_services() {
 
 secure_file_permissions() {
     info "Step 16: Setting secure file permissions..."
-    chmod 600 /etc/ssh/ssh_host_*_key
+    find /etc/ssh -maxdepth 1 -name 'ssh_host_*_key' -exec chmod 600 {} +
     chmod 644 /etc/passwd
     chmod 644 /etc/group
     chmod 600 /etc/shadow
     chmod 600 /etc/gshadow
-    chmod 644 /etc/ssh/ssh_host_*_key.pub
+    find /etc/ssh -maxdepth 1 -name 'ssh_host_*_key.pub' -exec chmod 644 {} +
     success "File permissions secured"
 }
 
