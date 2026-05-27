@@ -20,6 +20,7 @@
 #   --ts-ssh             Enable Tailscale SSH (replaces key-based SSH over tailnet)
 
 set -euo pipefail
+IFS=$'\n\t'
 
 # Source shared helpers (info/success/warn/error, require_root, require_ubuntu, ...)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

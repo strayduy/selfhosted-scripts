@@ -57,7 +57,7 @@ Tick items off as they land.
       don't call `require_ubuntu 24.04`. Add it to `main()` of both.
 - [x] **[CONVENTION]** `setup_rootless_podman.sh` has no `--help` / `-h`.
       Add a `usage()` heredoc + dispatcher.
-- [ ] **[CONVENTION]** None of the three scripts reset `IFS=$'\n\t'` per
+- [x] **[CONVENTION]** None of the three scripts reset `IFS=$'\n\t'` per
       the AGENTS.md file-header template. Add it.
 - [ ] **[CONVENTION]** `setup_vaultwarden.sh: apt-get install -y argon2`
       is missing `--no-install-recommends` and `DEBIAN_FRONTEND=noninteractive`.

@@ -51,6 +51,7 @@
 #            systemctl --user restart vaultwarden
 
 set -euo pipefail
+IFS=$'\n\t'
 
 # Source shared helpers (info/success/warn/error/section, require_root, ...).
 # Two valid locations: the in-repo path (when invoked from a clone) and the
