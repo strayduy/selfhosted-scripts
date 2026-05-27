@@ -93,7 +93,7 @@ Tick items off as they land.
 
 ## Tier 4 — Robustness / correctness improvements
 
-- [ ] **[POLISH]** `setup_rootless_podman.sh` — move the AppArmor
+- [x] **[POLISH]** `setup_rootless_podman.sh` — move the AppArmor
       `flags=(unconfined)` patch out of in-place sed and into
       `/etc/apparmor.d/local/podman` (and equivalent local overrides for
       `crun` and `slirp4netns`). The current patch is silently undone the
