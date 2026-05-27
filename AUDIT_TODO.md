@@ -98,7 +98,7 @@ Tick items off as they land.
       `/etc/apparmor.d/local/podman` (and equivalent local overrides for
       `crun` and `slirp4netns`). The current patch is silently undone the
       next time `unattended-upgrades` reinstalls `podman`.
-- [ ] **[POLISH]** `bootstrap_server.sh: secure_shared_memory` — replace
+- [x] **[POLISH]** `bootstrap_server.sh: secure_shared_memory` — replace
       the `/etc/fstab` append with a systemd drop-in at
       `/etc/systemd/system/dev-shm.mount.d/hardening.conf`. Matches the
       "drop-in files, never append to system files" rule in AGENTS.md.

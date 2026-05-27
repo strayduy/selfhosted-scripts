@@ -326,18 +326,27 @@ EOF
 
 secure_shared_memory() {
     info "Step 9: Securing shared memory..."
-    # Mount /dev/shm (the canonical path; /run/shm is just a symlink to it on Ubuntu 24.04).
+    # Harden /dev/shm via a systemd drop-in rather than /etc/fstab so that
+    # re-runs overwrite a single managed file and we never append to a
+    # system-owned file (AGENTS.md: "drop-in files, never append to system files").
+    #
     # noexec: prevent executing binaries from shared memory
     # nosuid: prevent setuid/setgid bits from taking effect
     # nodev:  prevent device files in shared memory
-    if ! grep -q "tmpfs.*/dev/shm" /etc/fstab; then
-        echo "tmpfs /dev/shm tmpfs defaults,noexec,nosuid,nodev 0 0" >> /etc/fstab
-        # Apply immediately without requiring a reboot
-        mount -o remount,noexec,nosuid,nodev /dev/shm
-        success "Shared memory secured and remounted"
-    else
-        warn "Shared memory already configured"
-    fi
+    local dropin_dir="/etc/systemd/system/dev-shm.mount.d"
+    local dropin_file="${dropin_dir}/hardening.conf"
+
+    mkdir -p "${dropin_dir}"
+    cat > "${dropin_file}" <<'EOF'
+[Mount]
+Options=defaults,noexec,nosuid,nodev
+EOF
+    chmod 644 "${dropin_file}"
+
+    systemctl daemon-reload
+    # Apply the new options immediately without a reboot.
+    mount -o remount,noexec,nosuid,nodev /dev/shm
+    success "Shared memory secured via systemd drop-in and remounted"
 }
 
 # ── Step 10: Set up UFW firewall ──────────────────────────────────────────────
