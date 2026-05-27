@@ -17,10 +17,26 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PODMAN_USER="podman" # overridden by argument parsing in main()
 SUBUID_COUNT=65536  # 65536 UIDs = a full "sub-namespace" range
 
-# PODMAN_UID is set as a side-effect of setup_user() and used by
-# setup_storage() and smoke_test(). Declare it here so set -u doesn't
-# fire if something calls those functions out of order.
+# ── State variables exported by setup_user() ──────────────────────────────────
+#
+# These two globals are written exclusively inside setup_user() and are
+# consumed by later steps.  They are declared here (in the Configuration
+# section) so that:
+#   a) set -u never fires if a downstream function is called before
+#      setup_user() in an unusual test/debug invocation, and
+#   b) the ownership contract is obvious: "setup_user() sets these;
+#      everything else only reads them."
+#
+# PODMAN_UID          — numeric UID of PODMAN_USER after user creation.
+#                       Used by setup_storage() (no runroot path until UID is
+#                       known) and smoke_test() (XDG_RUNTIME_DIR path).
+#
+# PODMAN_USER_PREEXISTED — "true" when the target user already existed before
+#                       this script ran; "false" when we just created it.
+#                       Used by setup_subids() to decide whether to run
+#                       `podman system migrate` to reconcile stale UID mappings.
 PODMAN_UID=""
+PODMAN_USER_PREEXISTED="false"
 
 # ── Preflight checks ──────────────────────────────────────────────────────────
 #
@@ -85,11 +101,6 @@ install_dependencies() {
 }
 
 # ── Step 2: Create user and group ─────────────────────────────────────────────
-
-# Set to "true" if the user already existed before this script ran.
-# setup_subids() uses this to decide whether to run `podman system migrate`
-# to reconcile any stale UID mappings in Podman's storage database.
-PODMAN_USER_PREEXISTED="false"
 
 setup_user() {
     info "Setting up user '$PODMAN_USER'..."
@@ -735,16 +746,18 @@ main() {
     echo
 
     install_dependencies
-    setup_user   # Sets PODMAN_UID / PODMAN_USER_PREEXISTED as side-effects
-    setup_subids # Uses PODMAN_USER_PREEXISTED; may run podman system migrate
+    # setup_user() populates the PODMAN_UID and PODMAN_USER_PREEXISTED globals
+    # (declared in the Configuration section above) that subsequent steps read.
+    setup_user
+    setup_subids # reads PODMAN_USER_PREEXISTED; may run podman system migrate
     setup_cgroup_delegation
     setup_linger
     setup_privileged_ports # Allows rootless containers to bind to port 443+
-    setup_storage          # Depends on PODMAN_UID being set by setup_user()
+    setup_storage          # reads PODMAN_UID (set by setup_user())
     setup_registries
     setup_apparmor
-    setup_network_backend # Depends on AppArmor being patched before calling podman --version
-    smoke_test            # Depends on PODMAN_UID being set by setup_user()
+    setup_network_backend  # AppArmor must be patched before calling podman --version
+    smoke_test             # reads PODMAN_UID (set by setup_user())
 
     echo
     success "=== Setup complete! ==="

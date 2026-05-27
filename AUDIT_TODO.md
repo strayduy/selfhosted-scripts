@@ -165,7 +165,7 @@ Tick items off as they land.
 - [ ] **[POLISH]** `setup_rootless_podman.sh` — smoke-test failure should
       use a distinctive exit code (e.g. 42) so CI / wrappers can tell
       "configuration error" from "smoke test inconclusive".
-- [ ] **[POLISH]** `setup_rootless_podman.sh` — `PODMAN_UID` and
+- [x] **[POLISH]** `setup_rootless_podman.sh` — `PODMAN_UID` and
       `PODMAN_USER_PREEXISTED` as cross-function globals work but are a
       smell. Either pass them explicitly or annotate with a clear
       "state exported from setup_user()" comment block.
