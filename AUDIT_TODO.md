@@ -20,7 +20,7 @@ Tick items off as they land.
       globs (`chmod 600 /etc/ssh/ssh_host_*_key`) abort under `set -u` on
       images that ship without host keys. Wrap in `shopt -s nullglob` or
       switch to `find … -exec chmod`.
-- [ ] **[BUG]** `bootstrap_server.sh: print_summary` — claims "Fail2Ban (24h
+- [x] **[BUG]** `bootstrap_server.sh: print_summary` — claims "Fail2Ban (24h
       SSH bans)" but `jail.local` sets `bantime = 12h`. Pick one and make
       them match.
 - [ ] **[BUG]** `bootstrap_server.sh: setup_user_ssh_keys` — empty

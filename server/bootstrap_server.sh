@@ -700,7 +700,7 @@ print_summary() {
     echo ""
     warn "=== SECURITY FEATURES ENABLED ==="
     echo -e "${GREEN}✓${NC} UFW Firewall (SSH only: $SSH_PORT — add web ports manually if needed)"
-    echo -e "${GREEN}✓${NC} Fail2Ban (24h SSH bans)"
+    echo -e "${GREEN}✓${NC} Fail2Ban (12h SSH bans)"
     echo -e "${GREEN}✓${NC} Automatic security updates"
     echo -e "${GREEN}✓${NC} Kernel security hardening"
     echo -e "${GREEN}✓${NC} Strong password policies (pam_faillock)"
