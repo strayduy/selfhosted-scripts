@@ -175,7 +175,9 @@ check_tailscale() {
 # CERT REFRESH — fetch/renew Tailscale TLS cert and copy into the data dir
 # ══════════════════════════════════════════════════════════════════════════════
 cmd_cert_refresh() {
-    local hostname="$1"
+    local hostname="${1:-}"
+
+    [[ -n "$hostname" ]] || error "hostname is required for cert-refresh"
 
     print_info "Fetching Tailscale TLS certificate for $hostname..."
 

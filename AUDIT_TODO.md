@@ -30,7 +30,7 @@ Tick items off as they land.
 - [x] **[BUG]** `setup_vaultwarden.sh: cmd_setup` — `local hostname="$1"`
       aborts under `set -u` when no args are given, before the friendly
       "hostname is required" error. Use `"${1:-}"` and validate.
-- [ ] **[BUG]** `setup_vaultwarden.sh: cmd_cert_refresh` — accepts an empty
+- [x] **[BUG]** `setup_vaultwarden.sh: cmd_cert_refresh` — accepts an empty
       hostname (passed through from the dispatcher's `"${2:-}"`) and writes
       broken cert files for the empty string. Validate non-empty at the top.
 - [ ] **[BUG-likely]** `setup_vaultwarden.sh` Quadlet — `[Unit] After=default.target`
