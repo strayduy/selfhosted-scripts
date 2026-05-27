@@ -116,7 +116,7 @@ Tick items off as they land.
       `/swapfile` already exists, swappiness is silently dropped. Fold
       swap-related sysctls into a single `write_sysctl_hardening()` that
       always emits the whole file.
-- [ ] **[POLISH]** `bootstrap_server.sh` — reconsider the
+- [x] **[POLISH]** `bootstrap_server.sh` — reconsider the
       `Defaults requiretty` + `Defaults log_input,log_output` combination.
       `log_input,log_output` records every keystroke and every output byte
       of every sudo session into `/var/log/sudo-io/`, which is more than

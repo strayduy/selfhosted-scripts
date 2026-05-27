@@ -543,11 +543,13 @@ harden_sudo() {
     # Require a real TTY for sudo (prevents certain privilege escalation via cron/scripts)
     # NOTE: this can break cron jobs that themselves shell out to sudo — remove if you
     # need that pattern.
+    # log_input,log_output is intentionally omitted: it records every keystroke and every
+    # output byte of every sudo session under /var/log/sudo-io/, which is excessive for
+    # a single-admin droplet. logfile= provides command-level audit which is sufficient.
     cat > /etc/sudoers.d/hardening << 'EOF'
 Defaults requiretty
 Defaults timestamp_timeout=5
 Defaults logfile=/var/log/sudo.log
-Defaults log_input,log_output
 Defaults env_reset
 Defaults secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 EOF
