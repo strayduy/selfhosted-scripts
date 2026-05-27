@@ -205,9 +205,7 @@ setup_subids() {
     # confusing "cannot change ownership" errors on the next container run.
     if [[ "$PODMAN_USER_PREEXISTED" == "true" ]] && [[ "$subids_changed" == "true" ]]; then
         info "Pre-existing user with new subid ranges — running 'podman system migrate'..."
-        sudo -u "$PODMAN_USER" \
-            XDG_RUNTIME_DIR="/run/user/${PODMAN_UID}" \
-            podman system migrate &&
+        run_as_user "$PODMAN_USER" podman system migrate &&
             success "podman system migrate completed." ||
             warn "podman system migrate failed or was unnecessary — this is non-fatal if containers have not been used yet."
     fi
@@ -542,8 +540,7 @@ smoke_test() {
     # socket and runtime files.
     local result
     result=$(
-        sudo -u "$PODMAN_USER" \
-            XDG_RUNTIME_DIR="${runtime_dir}" \
+        run_as_user "$PODMAN_USER" \
             podman info --format '{{.Host.Security.Rootless}}' 2>/dev/null ||
             true
     )

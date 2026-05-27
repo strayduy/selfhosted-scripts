@@ -107,46 +107,8 @@ require_root
 require_ubuntu "24.04"
 
 # ── Tailscale check ───────────────────────────────────────────────────────────
-# Verify the dedicated rootless-Podman service account this script expects.
-# The user must already exist (created by setup_rootless_podman.sh) — we don't
-# create it on the fly here, because doing so would skip all the rootless-
-# Podman setup (subuid/subgid ranges, cgroup delegation, AppArmor patches,
-# linger, port-binding sysctl) that script handles.
-check_system_user() {
-    if ! id "$VW_SYSTEM_USER" &>/dev/null; then
-        warn "System user '$VW_SYSTEM_USER' does not exist."
-        warn ""
-        warn "This script runs Vaultwarden as a dedicated rootless-Podman"
-        warn "service account that must be created beforehand. From the"
-        warn "root of this repo, run:"
-        warn ""
-        warn "    sudo ./server/setup_rootless_podman.sh $VW_SYSTEM_USER"
-        warn ""
-        warn "Then re-run this script."
-        exit 1
-    fi
-
-    # Confirm linger is enabled — without it, the user's systemd session
-    # (and therefore any container) is torn down when no login is active.
-    if ! loginctl show-user "$VW_SYSTEM_USER" 2>/dev/null | grep -q "Linger=yes"; then
-        warn "User '$VW_SYSTEM_USER' exists but linger is not enabled."
-        warn "Re-run: sudo ./server/setup_rootless_podman.sh $VW_SYSTEM_USER"
-        exit 1
-    fi
-}
-
-# Run `systemctl --user <args>` as the vaultwarden user, against the user's
-# systemd instance. This is the canonical pattern for managing rootless
-# Podman Quadlet units from a root invocation (cron, this script, ...).
-# XDG_RUNTIME_DIR must point at the tmpfs created for the user by
-# systemd-logind when linger is active.
-vw_systemctl() {
-    local vw_uid
-    vw_uid=$(id -u "$VW_SYSTEM_USER")
-    sudo -u "$VW_SYSTEM_USER" \
-        XDG_RUNTIME_DIR="/run/user/${vw_uid}" \
-        systemctl --user "$@"
-}
+# require_rootless_podman_user and systemctl_user (used throughout this script)
+# come from lib/common.sh, sourced above.
 
 check_tailscale() {
     if ! command -v tailscale &>/dev/null; then
@@ -209,8 +171,8 @@ cmd_cert_refresh() {
 
     if [[ "$old_fingerprint" = "$new_fingerprint" && -n "$new_fingerprint" ]]; then
         info "Certificate unchanged — skipping Vaultwarden restart"
-    elif vw_systemctl is-active --quiet vaultwarden 2>/dev/null; then
-        vw_systemctl restart vaultwarden
+    elif systemctl_user "$VW_SYSTEM_USER" is-active --quiet vaultwarden 2>/dev/null; then
+        systemctl_user "$VW_SYSTEM_USER" restart vaultwarden
         success "Vaultwarden restarted to pick up new certificate"
     fi
 }
@@ -245,7 +207,7 @@ cmd_harden() {
         warn "ADMIN_TOKEN line not found in $VW_ENV_FILE — check manually"
     fi
 
-    vw_systemctl restart vaultwarden
+    systemctl_user "$VW_SYSTEM_USER" restart vaultwarden
     success "Vaultwarden restarted with hardened config"
     info "To re-enable the admin interface, edit $VW_ENV_FILE,"
     info "uncomment ADMIN_TOKEN, and run:"
@@ -277,7 +239,7 @@ cmd_setup() {
     fi
 
     # ── Preflight checks ──────────────────────────────────────────────────────
-    check_system_user
+    require_rootless_podman_user "$VW_SYSTEM_USER"
     check_tailscale
 
     # Resolve the Tailscale IP for this machine — used to bind Rocket to the
@@ -480,9 +442,9 @@ EOF
     # vaultwarden.service unit at runtime.
     info "Step 6: Writing Quadlet unit to $VW_QUADLET_FILE..."
 
-    sudo -u "$VW_SYSTEM_USER" mkdir -p "$VW_QUADLET_DIR"
+    run_as_user "$VW_SYSTEM_USER" mkdir -p "$VW_QUADLET_DIR"
 
-    sudo -u "$VW_SYSTEM_USER" tee "$VW_QUADLET_FILE" > /dev/null << EOF
+    run_as_user "$VW_SYSTEM_USER" tee "$VW_QUADLET_FILE" > /dev/null << EOF
 # Vaultwarden — managed by setup_vaultwarden.sh
 # Quadlet generates vaultwarden.service from this file.
 #
@@ -528,8 +490,7 @@ EOF
 
     # ── Step 7: Pull image ────────────────────────────────────────────────────
     info "Step 7: Pulling Vaultwarden image ($VW_IMAGE)..."
-    sudo -u "$VW_SYSTEM_USER" XDG_RUNTIME_DIR="/run/user/$(id -u "$VW_SYSTEM_USER")" \
-        podman pull "$VW_IMAGE"
+    run_as_user "$VW_SYSTEM_USER" podman pull "$VW_IMAGE"
     success "Image pulled"
 
     # ── Step 8: Activate Quadlet unit ─────────────────────────────────────────
@@ -537,12 +498,12 @@ EOF
     # produce a transient vaultwarden.service unit in the user session.
     info "Step 8: Activating Quadlet unit..."
 
-    vw_systemctl daemon-reload
+    systemctl_user "$VW_SYSTEM_USER" daemon-reload
     # Quadlet-generated units cannot be `enable`d (they're transient — they
     # are regenerated on every daemon-reload), but `WantedBy=default.target`
     # in the .container file makes them start automatically with the user
     # session, which linger keeps alive across reboots.
-    vw_systemctl start vaultwarden.service
+    systemctl_user "$VW_SYSTEM_USER" start vaultwarden.service
     success "Quadlet unit activated and started"
 
     # ── Step 9: Health check ──────────────────────────────────────────────────
@@ -558,8 +519,10 @@ EOF
             success "Vaultwarden is responding on $hostname:$port"
             break
         fi
-        info "  Not ready yet (attempt $i/$retries) — waiting 5s..."
-        sleep 5
+        if (( i < retries )); then
+            info "  Not ready yet (attempt $i/$retries) — waiting 5s..."
+            sleep 5
+        fi
     done
 
     if [[ "$healthy" = false ]]; then

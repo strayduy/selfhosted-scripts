@@ -79,7 +79,7 @@ Tick items off as they land.
       aliases in `bootstrap_server.sh` and `setup_vaultwarden.sh`. Rewrite
       the `echo -e "${YELLOW}..."` lines in the summary blocks as `warn` /
       `info` calls.
-- [ ] **[POLISH]** Promote shared helpers into `lib/common.sh`:
+- [x] **[POLISH]** Promote shared helpers into `lib/common.sh`:
     - [ ] `run_as_user <user> <cmd…>` — sets `XDG_RUNTIME_DIR` and
           `DBUS_SESSION_BUS_ADDRESS`.
     - [ ] `systemctl_user <user> <args…>` — wraps `run_as_user … systemctl --user`.
