@@ -51,7 +51,7 @@ Tick items off as they land.
       it mechanically).
 - [x] **[CONVENTION]** `setup_vaultwarden.sh` uses `[ ... ]` tests in 10+
       places. Convert to `[[ ... ]]`.
-- [ ] **[CONVENTION]** `setup_vaultwarden.sh: cmd_help` greps comments from
+- [x] **[CONVENTION]** `setup_vaultwarden.sh: cmd_help` greps comments from
       `$0`. Replace with a literal heredoc `usage()` function.
 - [ ] **[CONVENTION]** `setup_rootless_podman.sh` and `setup_vaultwarden.sh`
       don't call `require_ubuntu 24.04`. Add it to `main()` of both.

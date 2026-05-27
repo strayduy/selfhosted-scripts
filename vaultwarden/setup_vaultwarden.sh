@@ -274,7 +274,7 @@ cmd_setup() {
         case "$1" in
             --port)         port="$2";         shift 2 ;;
             --admin-token)  admin_token="$2";  shift 2 ;;
-            --help|-h)      cmd_help; exit 0 ;;
+            --help|-h)      usage; exit 0 ;;
             *) print_error "Unknown option: $1"; exit 1 ;;
         esac
     done
@@ -608,10 +608,72 @@ EOF
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
-# HELP
+# USAGE
 # ══════════════════════════════════════════════════════════════════════════════
-cmd_help() {
-    grep '^#' "$0" | grep -v '^#!/' | sed 's/^# \?//'
+usage() {
+    cat << EOF
+Vaultwarden Setup Script (Podman + Tailscale edition)
+
+Sets up a Vaultwarden instance (self-hosted Bitwarden-compatible password
+manager) running in a Podman container, with TLS provided directly by
+Tailscale. No nginx or Let's Encrypt required — the droplet must already
+be joined to a Tailscale network with MagicDNS and HTTPS certificates
+enabled in the Tailscale admin console.
+
+Usage:
+  sudo ./setup_vaultwarden.sh <tailscale-hostname> [options]
+  sudo ./setup_vaultwarden.sh harden
+  sudo ./setup_vaultwarden.sh cert-refresh <tailscale-hostname>
+  sudo ./setup_vaultwarden.sh --help
+
+Arguments:
+  <tailscale-hostname>   Full MagicDNS name of this machine, e.g.:
+                           my-droplet.tail1234.ts.net
+
+Subcommands:
+  harden                 Disable signups and the admin interface after
+                         initial account creation.
+  cert-refresh <host>    Fetch/renew the Tailscale TLS certificate and
+                         restart Vaultwarden if the cert changed. Run by
+                         cron daily; safe to invoke manually.
+
+Options (setup only):
+  --port <port>          Port to bind Vaultwarden on the Tailscale
+                         interface (default: 443).
+  --admin-token <token>  Token for the /admin interface
+                         (default: randomly generated).
+  --help, -h             Show this help and exit.
+
+Examples:
+  sudo ./setup_vaultwarden.sh my-droplet.tail1234.ts.net
+  sudo ./setup_vaultwarden.sh my-droplet.tail1234.ts.net --port 8443
+  sudo ./setup_vaultwarden.sh harden
+  sudo ./setup_vaultwarden.sh cert-refresh my-droplet.tail1234.ts.net
+
+Prerequisites:
+  - Tailscale is installed, running, and this machine is joined to your tailnet.
+  - MagicDNS is enabled in the Tailscale admin console (DNS → Enable MagicDNS).
+  - HTTPS certificates are enabled (DNS → Enable HTTPS).
+  - The 'vaultwarden' rootless-Podman service account already exists:
+      sudo ./server/setup_rootless_podman.sh vaultwarden
+
+What the setup subcommand does:
+  1. Installs argon2
+  2. Creates persistent data directory at /srv/vaultwarden
+  3. Fetches a TLS certificate for the Tailscale hostname
+  4. Installs a daily cert-refresh cron job
+  5. Writes an env config file at /etc/vaultwarden/vaultwarden.conf
+  6. Writes a Podman Quadlet (.container) unit for the vaultwarden user
+  7. Pulls the Vaultwarden image
+  8. Activates the Quadlet unit via systemctl --user
+
+After setup:
+  1. Visit https://<tailscale-hostname> and create your account.
+  2. Visit https://<tailscale-hostname>/admin (admin token is in
+     /root/vaultwarden-admin-token.txt — delete after use).
+  3. Once your account is created, lock down the instance:
+       sudo ./setup_vaultwarden.sh harden
+EOF
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -620,11 +682,9 @@ cmd_help() {
 case "${1:-}" in
     harden)       cmd_harden ;;
     cert-refresh) cmd_cert_refresh "${2:-}" ;;
-    --help|-h)    cmd_help ;;
+    --help|-h)    usage ;;
     "")
-        print_error "Usage: $0 <tailscale-hostname> [options]"
-        print_error "       $0 harden"
-        print_error "       $0 cert-refresh <tailscale-hostname>"
+        usage >&2
         exit 1
         ;;
     *)
