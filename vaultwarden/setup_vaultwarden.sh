@@ -69,15 +69,6 @@ for _common_candidate in \
 done
 unset _common_candidate
 
-# Back-compat aliases: this script's body still uses print_* names.
-# print_error is intentionally non-exiting (callers always follow it with an
-# explicit `exit 1`); don't alias to error() which would exit.
-print_info()    { info "$@"; }
-print_success() { success "$@"; }
-print_warning() { warn "$@"; }
-print_error()   { echo "${_C_RED}[ERROR]${_C_NC} $*" >&2; }
-print_section() { section "$@"; }
-
 # Preserve the colour-variable names used in the final summary block.
 GREEN="$_C_GREEN"; YELLOW="$_C_YELLOW"; NC="$_C_NC"
 
@@ -124,23 +115,23 @@ require_ubuntu "24.04"
 # linger, port-binding sysctl) that script handles.
 check_system_user() {
     if ! id "$VW_SYSTEM_USER" &>/dev/null; then
-        print_error "System user '$VW_SYSTEM_USER' does not exist."
-        print_error ""
-        print_error "This script runs Vaultwarden as a dedicated rootless-Podman"
-        print_error "service account that must be created beforehand. From the"
-        print_error "root of this repo, run:"
-        print_error ""
-        print_error "    sudo ./server/setup_rootless_podman.sh $VW_SYSTEM_USER"
-        print_error ""
-        print_error "Then re-run this script."
+        warn "System user '$VW_SYSTEM_USER' does not exist."
+        warn ""
+        warn "This script runs Vaultwarden as a dedicated rootless-Podman"
+        warn "service account that must be created beforehand. From the"
+        warn "root of this repo, run:"
+        warn ""
+        warn "    sudo ./server/setup_rootless_podman.sh $VW_SYSTEM_USER"
+        warn ""
+        warn "Then re-run this script."
         exit 1
     fi
 
     # Confirm linger is enabled — without it, the user's systemd session
     # (and therefore any container) is torn down when no login is active.
     if ! loginctl show-user "$VW_SYSTEM_USER" 2>/dev/null | grep -q "Linger=yes"; then
-        print_error "User '$VW_SYSTEM_USER' exists but linger is not enabled."
-        print_error "Re-run: sudo ./server/setup_rootless_podman.sh $VW_SYSTEM_USER"
+        warn "User '$VW_SYSTEM_USER' exists but linger is not enabled."
+        warn "Re-run: sudo ./server/setup_rootless_podman.sh $VW_SYSTEM_USER"
         exit 1
     fi
 }
@@ -160,15 +151,14 @@ vw_systemctl() {
 
 check_tailscale() {
     if ! command -v tailscale &>/dev/null; then
-        print_error "Tailscale is not installed. Install and join your tailnet first."
-        exit 1
+        error "Tailscale is not installed. Install and join your tailnet first."
     fi
 
     local ts_status
     ts_status=$(tailscale status --json 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('BackendState',''))" 2>/dev/null || echo "")
     if [[ "$ts_status" != "Running" ]]; then
-        print_error "Tailscale is not running or not authenticated (state: ${ts_status:-unknown})"
-        print_error "Run: tailscale up"
+        warn "Tailscale is not running or not authenticated (state: ${ts_status:-unknown})"
+        warn "Run: tailscale up"
         exit 1
     fi
 }
@@ -181,7 +171,7 @@ cmd_cert_refresh() {
 
     [[ -n "$hostname" ]] || error "hostname is required for cert-refresh"
 
-    print_info "Fetching Tailscale TLS certificate for $hostname..."
+    info "Fetching Tailscale TLS certificate for $hostname..."
 
     # Snapshot the fingerprint of the cert already in place (if any) so we can
     # detect whether tailscale cert actually issued a new one.
@@ -210,7 +200,7 @@ cmd_cert_refresh() {
     chmod 640 "$VW_CERT_DIR/privkey.pem"
     chmod 644 "$VW_CERT_DIR/fullchain.pem"
 
-    print_success "Certificate copied to $VW_CERT_DIR"
+    success "Certificate copied to $VW_CERT_DIR"
 
     # Only restart if the cert actually changed — avoids a needless service
     # interruption on days when tailscale cert returns the cached cert unchanged.
@@ -219,10 +209,10 @@ cmd_cert_refresh() {
         -in "$VW_CERT_DIR/fullchain.pem" 2>/dev/null || true)
 
     if [[ "$old_fingerprint" = "$new_fingerprint" && -n "$new_fingerprint" ]]; then
-        print_info "Certificate unchanged — skipping Vaultwarden restart"
+        info "Certificate unchanged — skipping Vaultwarden restart"
     elif vw_systemctl is-active --quiet vaultwarden 2>/dev/null; then
         vw_systemctl restart vaultwarden
-        print_success "Vaultwarden restarted to pick up new certificate"
+        success "Vaultwarden restarted to pick up new certificate"
     fi
 }
 
@@ -230,37 +220,37 @@ cmd_cert_refresh() {
 # HARDEN — disable signups and admin interface post-setup
 # ══════════════════════════════════════════════════════════════════════════════
 cmd_harden() {
-    print_section "Hardening Vaultwarden"
+    section "Hardening Vaultwarden"
 
     if [[ ! -f "$VW_ENV_FILE" ]]; then
-        print_error "Vaultwarden config not found at $VW_ENV_FILE"
-        print_error "Has Vaultwarden been set up yet?"
+        warn "Vaultwarden config not found at $VW_ENV_FILE"
+        warn "Has Vaultwarden been set up yet?"
         exit 1
     fi
 
     # Disable signups
     if grep -q '^SIGNUPS_ALLOWED=false' "$VW_ENV_FILE"; then
-        print_info "SIGNUPS_ALLOWED already false — skipping"
+        info "SIGNUPS_ALLOWED already false — skipping"
     else
         sed -i 's/^SIGNUPS_ALLOWED=.*/SIGNUPS_ALLOWED=false/' "$VW_ENV_FILE"
-        print_success "Signups disabled"
+        success "Signups disabled"
     fi
 
     # Disable admin interface
     if grep -q '^#ADMIN_TOKEN=' "$VW_ENV_FILE"; then
-        print_info "Admin interface already disabled — skipping"
+        info "Admin interface already disabled — skipping"
     elif grep -q '^ADMIN_TOKEN=' "$VW_ENV_FILE"; then
         sed -i 's/^ADMIN_TOKEN=/#ADMIN_TOKEN=/' "$VW_ENV_FILE"
-        print_success "Admin interface disabled"
+        success "Admin interface disabled"
     else
-        print_warning "ADMIN_TOKEN line not found in $VW_ENV_FILE — check manually"
+        warn "ADMIN_TOKEN line not found in $VW_ENV_FILE — check manually"
     fi
 
     vw_systemctl restart vaultwarden
-    print_success "Vaultwarden restarted with hardened config"
-    print_info "To re-enable the admin interface, edit $VW_ENV_FILE,"
-    print_info "uncomment ADMIN_TOKEN, and run:"
-    print_info "  sudo -u $VW_SYSTEM_USER XDG_RUNTIME_DIR=/run/user/\$(id -u $VW_SYSTEM_USER) systemctl --user restart vaultwarden"
+    success "Vaultwarden restarted with hardened config"
+    info "To re-enable the admin interface, edit $VW_ENV_FILE,"
+    info "uncomment ADMIN_TOKEN, and run:"
+    info "  sudo -u $VW_SYSTEM_USER XDG_RUNTIME_DIR=/run/user/\$(id -u $VW_SYSTEM_USER) systemctl --user restart vaultwarden"
     echo ""
 }
 
@@ -277,15 +267,14 @@ cmd_setup() {
             --port)         port="$2";         shift 2 ;;
             --admin-token)  admin_token="$2";  shift 2 ;;
             --help|-h)      usage; exit 0 ;;
-            *) print_error "Unknown option: $1"; exit 1 ;;
+            *) error "Unknown option: $1" ;;
         esac
     done
 
-    [[ -z "$hostname" ]] && { print_error "Tailscale hostname is required"; exit 1; }
+    [[ -z "$hostname" ]] && error "Tailscale hostname is required"
 
     if ! [[ "$port" =~ ^[0-9]+$ ]] || (( port < 1 || port > 65535 )); then
-        print_error "Invalid port '$port' — must be an integer between 1 and 65535"
-        exit 1
+        error "Invalid port '$port' — must be an integer between 1 and 65535"
     fi
 
     # ── Preflight checks ──────────────────────────────────────────────────────
@@ -297,10 +286,9 @@ cmd_setup() {
     local ts_ip
     ts_ip=$(tailscale ip -4 2>/dev/null || true)
     if [[ -z "$ts_ip" ]]; then
-        print_error "Could not determine Tailscale IPv4 address. Is the machine on the tailnet?"
-        exit 1
+        error "Could not determine Tailscale IPv4 address. Is the machine on the tailnet?"
     fi
-    print_info "Tailscale IPv4: $ts_ip"
+    info "Tailscale IPv4: $ts_ip"
 
     # Validate that the supplied hostname matches this machine's actual Tailscale
     # MagicDNS name. A mismatch means the cert will be for the wrong host.
@@ -309,21 +297,21 @@ cmd_setup() {
         | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['Self']['DNSName'].rstrip('.'))" \
         2>/dev/null || echo "")
     if [[ -z "$actual_hostname" ]]; then
-        print_warning "Could not verify Tailscale hostname (MagicDNS may not be enabled)."
-        print_warning "Continuing with supplied hostname: $hostname"
+        warn "Could not verify Tailscale hostname (MagicDNS may not be enabled)."
+        warn "Continuing with supplied hostname: $hostname"
     elif [[ "$hostname" != "$actual_hostname" ]]; then
-        print_error "Supplied hostname '$hostname' does not match this machine's Tailscale hostname '$actual_hostname'."
-        print_error "The TLS certificate would be for the wrong host. Did you mean:"
-        print_error "  sudo $0 $actual_hostname"
+        warn "Supplied hostname '$hostname' does not match this machine's Tailscale hostname '$actual_hostname'."
+        warn "The TLS certificate would be for the wrong host. Did you mean:"
+        warn "  sudo $0 $actual_hostname"
         exit 1
     else
-        print_info "Hostname verified: $hostname"
+        info "Hostname verified: $hostname"
     fi
 
     # Check for existing installation before doing anything destructive
     if [[ -f "$VW_ENV_FILE" || -f "$VW_QUADLET_FILE" ]]; then
-        print_error "Vaultwarden appears to already be installed."
-        print_error "To remove it, stop and disable the service, then remove $VW_CONF_DIR and $VW_DATA_DIR."
+        warn "Vaultwarden appears to already be installed."
+        warn "To remove it, stop and disable the service, then remove $VW_CONF_DIR and $VW_DATA_DIR."
         exit 1
     fi
 
@@ -334,15 +322,15 @@ cmd_setup() {
         admin_token=$(openssl rand -hex 32)
     fi
 
-    print_section "Setting up Vaultwarden on $hostname (port $port)"
+    section "Setting up Vaultwarden on $hostname (port $port)"
 
     # ── Step 1: Install dependencies ──────────────────────────────────────────
-    print_info "Step 1: Installing argon2..."
+    info "Step 1: Installing argon2..."
     apt-get update -qq
     # podman-compose is no longer needed — we use Quadlet (.container files)
     # which generates a systemd unit directly, without docker-compose.
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends argon2
-    print_success "Dependencies installed"
+    success "Dependencies installed"
 
     # Hash the admin token now that argon2 is available.
     # Vaultwarden expects an Argon2id hash in ADMIN_TOKEN — storing plaintext
@@ -356,9 +344,9 @@ cmd_setup() {
     # Write the raw token to a one-time reveal file, never to the terminal.
     local token_reveal_file="/root/vaultwarden-admin-token.txt"
     if [[ -f "$token_reveal_file" ]]; then
-        print_error "$token_reveal_file already exists from a previous (partial?) run."
-        print_error "Remove it first: sudo rm $token_reveal_file"
-        print_error "If you still have the token it contained, that's fine — it won't be reused."
+        warn "$token_reveal_file already exists from a previous (partial?) run."
+        warn "Remove it first: sudo rm $token_reveal_file"
+        warn "If you still have the token it contained, that's fine — it won't be reused."
         exit 1
     fi
     cat > "$token_reveal_file" << EOF
@@ -371,12 +359,12 @@ $admin_token
 The Argon2 hash of this token is stored in $VW_ENV_FILE.
 EOF
     chmod 600 "$token_reveal_file"
-    print_info "Admin token written to $token_reveal_file (root-only)"
-    print_warning "Read it with: sudo cat $token_reveal_file"
-    print_warning "Delete it after noting the token: sudo rm $token_reveal_file"
+    info "Admin token written to $token_reveal_file (root-only)"
+    warn "Read it with: sudo cat $token_reveal_file"
+    warn "Delete it after noting the token: sudo rm $token_reveal_file"
 
     # ── Step 2: Create system user and directories ────────────────────────────
-    print_info "Step 2: Creating directories..."
+    info "Step 2: Creating directories..."
 
     mkdir -p "$VW_DATA_DIR"
     mkdir -p "$VW_CERT_DIR"
@@ -388,16 +376,16 @@ EOF
     # the group-readable env file referenced by the Quadlet's EnvironmentFile=.
     chown root:"$VW_SYSTEM_USER" "$VW_CONF_DIR"
     chmod 750 "$VW_CONF_DIR"
-    print_success "Directories created"
+    success "Directories created"
 
     # ── Step 3: Fetch TLS certificate ─────────────────────────────────────────
-    print_section "Step 3: Fetching Tailscale TLS certificate"
-    print_info "This requires HTTPS certificates to be enabled in your Tailscale admin console"
-    print_info "(DNS → Enable HTTPS)"
+    section "Step 3: Fetching Tailscale TLS certificate"
+    info "This requires HTTPS certificates to be enabled in your Tailscale admin console"
+    info "(DNS → Enable HTTPS)"
     cmd_cert_refresh "$hostname"
 
     # ── Step 4: Install this script + cert-refresh cron job ──────────────────
-    print_info "Step 4: Installing script and certificate refresh cron job..."
+    info "Step 4: Installing script and certificate refresh cron job..."
 
     # Install the script and its sourced helper to fixed paths so that the
     # cert-refresh cron job and the post-setup `harden` / `cert-refresh`
@@ -410,7 +398,7 @@ EOF
     install -m 755 "${BASH_SOURCE[0]}" "$INSTALLED_SCRIPT"
     install -d -m 755 "$(dirname "$INSTALLED_COMMON")"
     install -m 644 "$SCRIPT_DIR/../lib/common.sh" "$INSTALLED_COMMON"
-    print_success "Script installed at $INSTALLED_SCRIPT"
+    success "Script installed at $INSTALLED_SCRIPT"
 
     # Run daily at 04:00 — Tailscale certs are valid for ~90 days so this is
     # ample headroom. `tailscale cert` is a no-op if the cert is still fresh,
@@ -420,10 +408,10 @@ EOF
 # Vaultwarden Tailscale cert refresh — managed by setup_vaultwarden.sh
 0 4 * * * root $INSTALLED_SCRIPT cert-refresh $hostname >> /var/log/vaultwarden-cert-refresh.log 2>&1
 CRON_EOF
-    print_success "Cron job installed: daily at 04:00 (calls $INSTALLED_SCRIPT cert-refresh)"
+    success "Cron job installed: daily at 04:00 (calls $INSTALLED_SCRIPT cert-refresh)"
 
     # ── Step 5: Write env config ──────────────────────────────────────────────
-    print_info "Step 5: Writing Vaultwarden config to $VW_ENV_FILE..."
+    info "Step 5: Writing Vaultwarden config to $VW_ENV_FILE..."
 
     cat > "$VW_ENV_FILE" << EOF
 # Vaultwarden environment configuration
@@ -485,13 +473,13 @@ EOF
     safe_hash=$(echo "$admin_token_hash" | sed 's/[&/\]/\\&/g')
     sed -i "s|ADMIN_TOKEN_PLACEHOLDER|${safe_hash}|" "$VW_ENV_FILE"
 
-    print_success "Config written (permissions: root-only read)"
+    success "Config written (permissions: root-only read)"
 
     # ── Step 6: Write Quadlet (.container) unit ───────────────────────────────
     # See podman-systemd.unit(5). systemd's quadlet generator reads .container
     # files on `systemctl --user daemon-reload` and synthesises a matching
     # vaultwarden.service unit at runtime.
-    print_info "Step 6: Writing Quadlet unit to $VW_QUADLET_FILE..."
+    info "Step 6: Writing Quadlet unit to $VW_QUADLET_FILE..."
 
     sudo -u "$VW_SYSTEM_USER" mkdir -p "$VW_QUADLET_DIR"
 
@@ -537,18 +525,18 @@ WantedBy=default.target
 EOF
 
     chmod 644 "$VW_QUADLET_FILE"
-    print_success "Quadlet unit written"
+    success "Quadlet unit written"
 
     # ── Step 7: Pull image ────────────────────────────────────────────────────
-    print_info "Step 7: Pulling Vaultwarden image ($VW_IMAGE)..."
+    info "Step 7: Pulling Vaultwarden image ($VW_IMAGE)..."
     sudo -u "$VW_SYSTEM_USER" XDG_RUNTIME_DIR="/run/user/$(id -u "$VW_SYSTEM_USER")" \
         podman pull "$VW_IMAGE"
-    print_success "Image pulled"
+    success "Image pulled"
 
     # ── Step 8: Activate Quadlet unit ─────────────────────────────────────────
     # daemon-reload triggers the quadlet generator to read VW_QUADLET_FILE and
     # produce a transient vaultwarden.service unit in the user session.
-    print_info "Step 8: Activating Quadlet unit..."
+    info "Step 8: Activating Quadlet unit..."
 
     vw_systemctl daemon-reload
     # Quadlet-generated units cannot be `enable`d (they're transient — they
@@ -556,10 +544,10 @@ EOF
     # in the .container file makes them start automatically with the user
     # session, which linger keeps alive across reboots.
     vw_systemctl start vaultwarden.service
-    print_success "Quadlet unit activated and started"
+    success "Quadlet unit activated and started"
 
     # ── Step 9: Health check ──────────────────────────────────────────────────
-    print_info "Waiting for Vaultwarden to be ready..."
+    info "Waiting for Vaultwarden to be ready..."
     local healthy=false
     local retries=12  # 12 × 5s = 60s timeout
     for (( i=1; i<=retries; i++ )); do
@@ -568,24 +556,24 @@ EOF
         if curl -sf --resolve "${hostname}:${port}:${ts_ip}" \
                 "https://${hostname}:${port}/alive" &>/dev/null; then
             healthy=true
-            print_success "Vaultwarden is responding on $hostname:$port"
+            success "Vaultwarden is responding on $hostname:$port"
             break
         fi
-        print_info "  Not ready yet (attempt $i/$retries) — waiting 5s..."
+        info "  Not ready yet (attempt $i/$retries) — waiting 5s..."
         sleep 5
     done
 
     if [[ "$healthy" = false ]]; then
-        print_warning "Vaultwarden didn't respond after 60s"
-        print_warning "Check logs with: sudo -u $VW_SYSTEM_USER journalctl --user-unit vaultwarden -n 50"
+        warn "Vaultwarden didn't respond after 60s"
+        warn "Check logs with: sudo -u $VW_SYSTEM_USER journalctl --user-unit vaultwarden -n 50"
     fi
 
     # ── Done ──────────────────────────────────────────────────────────────────
-    print_section "Vaultwarden setup complete"
+    section "Vaultwarden setup complete"
     echo ""
     echo -e "  ${GREEN}https://$hostname${NC}"
     echo ""
-    print_warning "Next steps:"
+    warn "Next steps:"
     echo -e "  ${YELLOW}1. Visit https://$hostname and create your account${NC}"
     echo -e "  ${YELLOW}2. Visit https://$hostname/admin to configure Vaultwarden${NC}"
     echo -e "     ${YELLOW}Admin token: sudo cat $token_reveal_file${NC}"
@@ -593,19 +581,19 @@ EOF
     echo -e "  ${YELLOW}3. Once your account is set up, lock down the instance:${NC}"
     echo -e "     ${YELLOW}sudo $0 harden${NC}"
     echo ""
-    print_info "Useful commands:"
-    print_info "  Logs:          sudo -u $VW_SYSTEM_USER journalctl --user-unit vaultwarden -f"
-    print_info "  Restart:       sudo -u $VW_SYSTEM_USER XDG_RUNTIME_DIR=/run/user/\$(id -u $VW_SYSTEM_USER) systemctl --user restart vaultwarden"
-    print_info "  Status:        sudo -u $VW_SYSTEM_USER XDG_RUNTIME_DIR=/run/user/\$(id -u $VW_SYSTEM_USER) systemctl --user status vaultwarden"
-    print_info "  Config:        $VW_ENV_FILE"
-    print_info "  Data:          $VW_DATA_DIR"
-    print_info "  Cert refresh:  $INSTALLED_SCRIPT cert-refresh $hostname  (cron: /etc/cron.d/vaultwarden-cert-refresh)"
+    info "Useful commands:"
+    info "  Logs:          sudo -u $VW_SYSTEM_USER journalctl --user-unit vaultwarden -f"
+    info "  Restart:       sudo -u $VW_SYSTEM_USER XDG_RUNTIME_DIR=/run/user/\$(id -u $VW_SYSTEM_USER) systemctl --user restart vaultwarden"
+    info "  Status:        sudo -u $VW_SYSTEM_USER XDG_RUNTIME_DIR=/run/user/\$(id -u $VW_SYSTEM_USER) systemctl --user status vaultwarden"
+    info "  Config:        $VW_ENV_FILE"
+    info "  Data:          $VW_DATA_DIR"
+    info "  Cert refresh:  $INSTALLED_SCRIPT cert-refresh $hostname  (cron: /etc/cron.d/vaultwarden-cert-refresh)"
     echo ""
-    print_info "To update Vaultwarden in future:"
-    print_info "  sudo -u $VW_SYSTEM_USER podman pull <new image>"
-    print_info "  sudo -u $VW_SYSTEM_USER XDG_RUNTIME_DIR=/run/user/\$(id -u $VW_SYSTEM_USER) \\"
-    print_info "      systemctl --user daemon-reload && systemctl --user restart vaultwarden"
-    print_info "  sudo -u $VW_SYSTEM_USER podman image prune -f   # clean up the old image"
+    info "To update Vaultwarden in future:"
+    info "  sudo -u $VW_SYSTEM_USER podman pull <new image>"
+    info "  sudo -u $VW_SYSTEM_USER XDG_RUNTIME_DIR=/run/user/\$(id -u $VW_SYSTEM_USER) \\"
+    info "      systemctl --user daemon-reload && systemctl --user restart vaultwarden"
+    info "  sudo -u $VW_SYSTEM_USER podman image prune -f   # clean up the old image"
     echo ""
 }
 

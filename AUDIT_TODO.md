@@ -70,7 +70,7 @@ Tick items off as they land.
 
 ## Tier 3 — Logging / helper consolidation
 
-- [ ] **[CONVENTION]** Delete the `print_info` / `print_success` / `print_warning`
+- [x] **[CONVENTION]** Delete the `print_info` / `print_success` / `print_warning`
       / `print_error` / `print_section` aliases in `setup_vaultwarden.sh`.
       Call `info` / `success` / `warn` / `error` / `section` directly.
       Where `error()`'s implicit exit is wrong, call `warn ...; exit 1`
