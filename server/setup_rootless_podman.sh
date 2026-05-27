@@ -572,6 +572,7 @@ smoke_test() {
 
 main() {
     require_root
+    require_ubuntu "24.04"
     preflight_checks
 
     info "=== Rootless Podman Setup ==="

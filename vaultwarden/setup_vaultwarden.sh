@@ -113,6 +113,7 @@ INSTALLED_COMMON="/usr/local/lib/selfhosted-scripts/common.sh"
 
 # ── Root check ────────────────────────────────────────────────────────────────
 require_root
+require_ubuntu "24.04"
 
 # ── Tailscale check ───────────────────────────────────────────────────────────
 # Verify the dedicated rootless-Podman service account this script expects.

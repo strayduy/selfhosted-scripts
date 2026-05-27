@@ -53,7 +53,7 @@ Tick items off as they land.
       places. Convert to `[[ ... ]]`.
 - [x] **[CONVENTION]** `setup_vaultwarden.sh: cmd_help` greps comments from
       `$0`. Replace with a literal heredoc `usage()` function.
-- [ ] **[CONVENTION]** `setup_rootless_podman.sh` and `setup_vaultwarden.sh`
+- [x] **[CONVENTION]** `setup_rootless_podman.sh` and `setup_vaultwarden.sh`
       don't call `require_ubuntu 24.04`. Add it to `main()` of both.
 - [ ] **[CONVENTION]** `setup_rootless_podman.sh` has no `--help` / `-h`.
       Add a `usage()` heredoc + dispatcher.
