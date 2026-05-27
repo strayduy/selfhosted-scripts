@@ -116,7 +116,7 @@ check_tailscale() {
     fi
 
     local ts_status
-    ts_status=$(tailscale status --json 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('BackendState',''))" 2>/dev/null || echo "")
+    ts_status=$(tailscale status --json 2>/dev/null | jq -r '.BackendState // ""' 2>/dev/null || echo "")
     if [[ "$ts_status" != "Running" ]]; then
         warn "Tailscale is not running or not authenticated (state: ${ts_status:-unknown})"
         warn "Run: tailscale up"
@@ -238,6 +238,14 @@ cmd_setup() {
         error "Invalid port '$port' — must be an integer between 1 and 65535"
     fi
 
+    # ── Install jq (required for preflight JSON parsing below) ──────────────
+    # jq is needed by check_tailscale() and the hostname-verification block
+    # that follow. argon2 is installed later in Step 1 once we know we are
+    # ready to hash the admin token.
+    info "Installing prerequisite: jq..."
+    apt-get update -qq
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends jq
+
     # ── Preflight checks ──────────────────────────────────────────────────────
     require_rootless_podman_user "$VW_SYSTEM_USER"
     check_tailscale
@@ -255,7 +263,7 @@ cmd_setup() {
     # MagicDNS name. A mismatch means the cert will be for the wrong host.
     local actual_hostname
     actual_hostname=$(tailscale status --json 2>/dev/null \
-        | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['Self']['DNSName'].rstrip('.'))" \
+        | jq -r '.Self.DNSName | rtrimstr(".")' \
         2>/dev/null || echo "")
     if [[ -z "$actual_hostname" ]]; then
         warn "Could not verify Tailscale hostname (MagicDNS may not be enabled)."
@@ -287,7 +295,7 @@ cmd_setup() {
 
     # ── Step 1: Install dependencies ──────────────────────────────────────────
     info "Step 1: Installing argon2..."
-    apt-get update -qq
+    # apt-get update was already run above to install jq; no need to repeat it.
     # podman-compose is no longer needed — we use Quadlet (.container files)
     # which generates a systemd unit directly, without docker-compose.
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends argon2

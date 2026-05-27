@@ -142,7 +142,7 @@ Tick items off as they land.
 - [x] **[POLISH]** `setup_vaultwarden.sh` — replace `PodmanArgs=--memory=512m
       --pids-limit=512` with first-class Quadlet fields `Memory=512M` and
       `PidsLimit=512`.
-- [ ] **[POLISH]** `setup_vaultwarden.sh` — drop the python3 dependency
+- [x] **[POLISH]** `setup_vaultwarden.sh` — drop the python3 dependency
       for parsing `tailscale status --json`. Install and use `jq` instead,
       or use `tailscale status --self --json --peers=false`.
 - [ ] **[POLISH]** `setup_vaultwarden.sh` — the `/root/vaultwarden-admin-token.txt`
