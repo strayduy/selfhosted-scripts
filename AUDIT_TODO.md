@@ -152,7 +152,7 @@ Tick items off as they land.
 - [x] **[POLISH]** `setup_vaultwarden.sh` — the health-check loop sleeps
       after the final failed attempt. Restructure so the final retry
       either succeeds or exits the loop without sleeping.
-- [ ] **[POLISH]** `setup_vaultwarden.sh` — `apt-get update -qq` masks
+- [x] **[POLISH]** `setup_vaultwarden.sh` — `apt-get update -qq` masks
       progress and errors; the other scripts use plain `apt-get update`.
       Standardize on no `-qq`.
 - [ ] **[POLISH]** `setup_rootless_podman.sh` — kernel version parsing

@@ -243,7 +243,7 @@ cmd_setup() {
     # that follow. argon2 is installed later in Step 1 once we know we are
     # ready to hash the admin token.
     info "Installing prerequisite: jq..."
-    apt-get update -qq
+    apt-get update
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends jq
 
     # ── Preflight checks ──────────────────────────────────────────────────────
