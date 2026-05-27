@@ -13,8 +13,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
-PODMAN_USER="${1:-podman}"
-SUBUID_COUNT=65536 # 65536 UIDs = a full "sub-namespace" range
+PODMAN_USER="podman" # overridden by argument parsing in main()
+SUBUID_COUNT=65536  # 65536 UIDs = a full "sub-namespace" range
 
 # PODMAN_UID is set as a side-effect of setup_user() and used by
 # setup_storage() and smoke_test(). Declare it here so set -u doesn't
@@ -568,9 +568,73 @@ smoke_test() {
     fi
 }
 
+# ── Usage ────────────────────────────────────────────────────────────────────
+
+usage() {
+    cat <<EOF
+Usage: sudo ./setup_rootless_podman.sh [OPTIONS] [USERNAME]
+
+Sets up a rootless Podman user with AppArmor configuration on Ubuntu 24.04.
+
+Arguments:
+  USERNAME        System user to create and configure for rootless Podman.
+                  Defaults to 'podman' if omitted.
+
+Options:
+  -h, --help      Show this help message and exit.
+
+What this script does:
+   1. Installs Podman and dependencies (uidmap, crun, passt, slirp4netns, ...).
+   2. Creates a dedicated system user (nologin shell, home dir mode 700).
+   3. Assigns subordinate UID/GID ranges (/etc/subuid, /etc/subgid).
+   4. Configures systemd cgroup delegation (user@.service.d/delegate.conf).
+   5. Enables systemd linger so containers survive logout.
+   6. Lowers net.ipv4.ip_unprivileged_port_start to 443.
+   7. Writes ~/.config/containers/storage.conf (overlay driver).
+   8. Writes ~/.config/containers/registries.conf (docker.io search).
+   9. Patches AppArmor profiles (podman, crun, slirp4netns) to flags=(unconfined).
+  10. Configures the network backend in containers.conf (pasta on Podman v5+).
+  11. Runs a smoke test to verify rootless operation.
+
+Prerequisites:
+  - Must be run as root (or via sudo).
+  - Ubuntu 24.04 LTS.
+
+Examples:
+  sudo ./setup_rootless_podman.sh
+  sudo ./setup_rootless_podman.sh vaultwarden
+  sudo ./setup_rootless_podman.sh --help
+EOF
+}
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 main() {
+    local _username=""
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -h | --help)
+                usage
+                exit 0
+                ;;
+            -*)
+                usage >&2
+                error "Unknown option: $1"
+                ;;
+            *)
+                if [[ -n "$_username" ]]; then
+                    usage >&2
+                    error "Unexpected argument: $1"
+                fi
+                _username="$1"
+                ;;
+        esac
+        shift
+    done
+
+    PODMAN_USER="${_username:-podman}"
+
     require_root
     require_ubuntu "24.04"
     preflight_checks
