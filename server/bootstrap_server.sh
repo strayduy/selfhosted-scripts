@@ -297,12 +297,14 @@ EOF
 
 # ── Step 8: Configure kernel security parameters ──────────────────────────────
 
-configure_sysctl_hardening() {
-    info "Step 8: Configuring kernel security parameters..."
-    # Write to a dedicated drop-in file instead of appending to sysctl.conf —
-    # idempotent because we overwrite the same file each run, never accumulate duplicates.
-    cat > /etc/sysctl.d/99-hardening.conf << EOF
-# Network Security Parameters (managed by bootstrap_server.sh)
+# Write the complete 99-hardening.conf in one place so that every re-run
+# produces the same file.  Both network/kernel params AND swap-tuning params
+# live here; that way configure_swap() never needs to append to this file
+# (which would silently disappear on any re-run that skips configure_swap).
+write_sysctl_hardening() {
+    cat > /etc/sysctl.d/99-hardening.conf << 'EOF'
+# Kernel / network security and VM tuning (managed by bootstrap_server.sh)
+# Network hardening
 net.ipv4.conf.default.rp_filter=1
 net.ipv4.conf.all.rp_filter=1
 net.ipv4.tcp_syncookies=1
@@ -315,9 +317,19 @@ net.ipv4.icmp_ignore_bogus_error_responses=1
 net.ipv6.conf.all.accept_redirects=0
 kernel.dmesg_restrict=1
 kernel.kptr_restrict=2
+# VM / swap tuning — always set; harmless if no swap is present
+vm.swappiness=10
+vm.vfs_cache_pressure=50
 EOF
+}
 
-    # Apply sysctl settings
+configure_sysctl_hardening() {
+    info "Step 8: Configuring kernel security parameters..."
+    # Delegate to write_sysctl_hardening() so the file is always written
+    # atomically and completely — including swap-related sysctls — on every
+    # run.  This prevents configure_swap()'s early-return path from silently
+    # dropping vm.swappiness on re-runs.
+    write_sysctl_hardening
     sysctl -p /etc/sysctl.d/99-hardening.conf
     success "Kernel security parameters configured"
 }
@@ -466,13 +478,10 @@ configure_swap() {
     mkswap /swapfile
     swapon /swapfile
     echo '/swapfile none swap sw 0 0' >> /etc/fstab
-    # Tune swappiness — 10 is a good default for a server (swap only under memory pressure)
-    # Written to the drop-in file, not sysctl.conf, to avoid duplicates on re-runs
-    cat >> /etc/sysctl.d/99-hardening.conf << EOF
-vm.swappiness=10
-vm.vfs_cache_pressure=50
-EOF
-    sysctl -p /etc/sysctl.d/99-hardening.conf
+    # vm.swappiness and vm.vfs_cache_pressure are already written (and
+    # applied) by configure_sysctl_hardening() via write_sysctl_hardening().
+    # Do not append here — doing so would cause duplicates on the first run
+    # and would be silently lost on any re-run that skips this function.
     success "Swap file created ($SWAP_SIZE) and enabled"
 }
 

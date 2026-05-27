@@ -102,7 +102,7 @@ Tick items off as they land.
       the `/etc/fstab` append with a systemd drop-in at
       `/etc/systemd/system/dev-shm.mount.d/hardening.conf`. Matches the
       "drop-in files, never append to system files" rule in AGENTS.md.
-- [ ] **[POLISH]** `bootstrap_server.sh: configure_swap` — appends
+- [x] **[POLISH]** `bootstrap_server.sh: configure_swap` — appends
       `vm.swappiness` to `99-hardening.conf` but `configure_sysctl_hardening`
       runs first and writes that file with `>`. On a re-run where
       `/swapfile` already exists, swappiness is silently dropped. Fold
