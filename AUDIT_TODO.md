@@ -49,7 +49,7 @@ Tick items off as they land.
 - [x] **[CONVENTION]** `setup_rootless_podman.sh` is indented with **2
       spaces** throughout. Reformat to 4 spaces (`shfmt -i 4 -w` will do
       it mechanically).
-- [ ] **[CONVENTION]** `setup_vaultwarden.sh` uses `[ ... ]` tests in 10+
+- [x] **[CONVENTION]** `setup_vaultwarden.sh` uses `[ ... ]` tests in 10+
       places. Convert to `[[ ... ]]`.
 - [ ] **[CONVENTION]** `setup_vaultwarden.sh: cmd_help` greps comments from
       `$0`. Replace with a literal heredoc `usage()` function.

@@ -184,7 +184,7 @@ cmd_cert_refresh() {
     # Snapshot the fingerprint of the cert already in place (if any) so we can
     # detect whether tailscale cert actually issued a new one.
     local old_fingerprint=""
-    if [ -f "$VW_CERT_DIR/fullchain.pem" ]; then
+    if [[ -f "$VW_CERT_DIR/fullchain.pem" ]]; then
         old_fingerprint=$(openssl x509 -noout -fingerprint -sha256 \
             -in "$VW_CERT_DIR/fullchain.pem" 2>/dev/null || true)
     fi
@@ -216,7 +216,7 @@ cmd_cert_refresh() {
     new_fingerprint=$(openssl x509 -noout -fingerprint -sha256 \
         -in "$VW_CERT_DIR/fullchain.pem" 2>/dev/null || true)
 
-    if [ "$old_fingerprint" = "$new_fingerprint" ] && [ -n "$new_fingerprint" ]; then
+    if [[ "$old_fingerprint" = "$new_fingerprint" && -n "$new_fingerprint" ]]; then
         print_info "Certificate unchanged — skipping Vaultwarden restart"
     elif vw_systemctl is-active --quiet vaultwarden 2>/dev/null; then
         vw_systemctl restart vaultwarden
@@ -230,7 +230,7 @@ cmd_cert_refresh() {
 cmd_harden() {
     print_section "Hardening Vaultwarden"
 
-    if [ ! -f "$VW_ENV_FILE" ]; then
+    if [[ ! -f "$VW_ENV_FILE" ]]; then
         print_error "Vaultwarden config not found at $VW_ENV_FILE"
         print_error "Has Vaultwarden been set up yet?"
         exit 1
@@ -279,7 +279,7 @@ cmd_setup() {
         esac
     done
 
-    [ -z "$hostname" ] && { print_error "Tailscale hostname is required"; exit 1; }
+    [[ -z "$hostname" ]] && { print_error "Tailscale hostname is required"; exit 1; }
 
     if ! [[ "$port" =~ ^[0-9]+$ ]] || (( port < 1 || port > 65535 )); then
         print_error "Invalid port '$port' — must be an integer between 1 and 65535"
@@ -294,7 +294,7 @@ cmd_setup() {
     # Tailscale interface only, so Vaultwarden is not reachable on the public IP
     local ts_ip
     ts_ip=$(tailscale ip -4 2>/dev/null || true)
-    if [ -z "$ts_ip" ]; then
+    if [[ -z "$ts_ip" ]]; then
         print_error "Could not determine Tailscale IPv4 address. Is the machine on the tailnet?"
         exit 1
     fi
@@ -306,10 +306,10 @@ cmd_setup() {
     actual_hostname=$(tailscale status --json 2>/dev/null \
         | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['Self']['DNSName'].rstrip('.'))" \
         2>/dev/null || echo "")
-    if [ -z "$actual_hostname" ]; then
+    if [[ -z "$actual_hostname" ]]; then
         print_warning "Could not verify Tailscale hostname (MagicDNS may not be enabled)."
         print_warning "Continuing with supplied hostname: $hostname"
-    elif [ "$hostname" != "$actual_hostname" ]; then
+    elif [[ "$hostname" != "$actual_hostname" ]]; then
         print_error "Supplied hostname '$hostname' does not match this machine's Tailscale hostname '$actual_hostname'."
         print_error "The TLS certificate would be for the wrong host. Did you mean:"
         print_error "  sudo $0 $actual_hostname"
@@ -319,7 +319,7 @@ cmd_setup() {
     fi
 
     # Check for existing installation before doing anything destructive
-    if [ -f "$VW_ENV_FILE" ] || [ -f "$VW_QUADLET_FILE" ]; then
+    if [[ -f "$VW_ENV_FILE" || -f "$VW_QUADLET_FILE" ]]; then
         print_error "Vaultwarden appears to already be installed."
         print_error "To remove it, stop and disable the service, then remove $VW_CONF_DIR and $VW_DATA_DIR."
         exit 1
@@ -328,7 +328,7 @@ cmd_setup() {
     # Generate the raw admin token now (before any installs) so we can fail
     # fast on bad input. The actual Argon2 hashing happens after Step 1
     # installs the argon2 package.
-    if [ -z "$admin_token" ]; then
+    if [[ -z "$admin_token" ]]; then
         admin_token=$(openssl rand -hex 32)
     fi
 
@@ -353,7 +353,7 @@ cmd_setup() {
 
     # Write the raw token to a one-time reveal file, never to the terminal.
     local token_reveal_file="/root/vaultwarden-admin-token.txt"
-    if [ -f "$token_reveal_file" ]; then
+    if [[ -f "$token_reveal_file" ]]; then
         print_error "$token_reveal_file already exists from a previous (partial?) run."
         print_error "Remove it first: sudo rm $token_reveal_file"
         print_error "If you still have the token it contained, that's fine — it won't be reused."
@@ -573,7 +573,7 @@ EOF
         sleep 5
     done
 
-    if [ "$healthy" = false ]; then
+    if [[ "$healthy" = false ]]; then
         print_warning "Vaultwarden didn't respond after 60s"
         print_warning "Check logs with: sudo -u $VW_SYSTEM_USER journalctl --user-unit vaultwarden -n 50"
     fi
