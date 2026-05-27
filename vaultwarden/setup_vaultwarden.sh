@@ -511,9 +511,6 @@ EOF
 [Unit]
 Description=Vaultwarden password manager (Podman Quadlet + Tailscale)
 Documentation=https://github.com/dani-garcia/vaultwarden
-# Tailscale runs as a system service, so we depend on the system target
-# being reached before this user unit starts.
-After=default.target
 
 [Container]
 Image=$VW_IMAGE

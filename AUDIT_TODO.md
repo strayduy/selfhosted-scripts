@@ -33,7 +33,7 @@ Tick items off as they land.
 - [x] **[BUG]** `setup_vaultwarden.sh: cmd_cert_refresh` — accepts an empty
       hostname (passed through from the dispatcher's `"${2:-}"`) and writes
       broken cert files for the empty string. Validate non-empty at the top.
-- [ ] **[BUG-likely]** `setup_vaultwarden.sh` Quadlet — `[Unit] After=default.target`
+- [x] **[BUG-likely]** `setup_vaultwarden.sh` Quadlet — `[Unit] After=default.target`
       combined with `[Install] WantedBy=default.target` is an inverse
       ordering loop. Drop the `After=` (or change to a concrete target).
 - [ ] **[BUG]** `bootstrap_server.sh: install_tailscale` — dead-code
