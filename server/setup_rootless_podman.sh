@@ -636,6 +636,13 @@ main() {
 
     PODMAN_USER="${_username:-podman}"
 
+    # Reject usernames that start with '-'. Such names are syntactically valid
+    # to useradd but are almost certainly a mistyped flag (e.g. "--help") and
+    # would cause confusing failures in downstream commands that treat the
+    # leading dash as an option prefix.
+    [[ "$PODMAN_USER" != -* ]] ||
+        error "Invalid username '$PODMAN_USER': usernames must not start with '-'."
+
     require_root
     require_ubuntu "24.04"
     preflight_checks

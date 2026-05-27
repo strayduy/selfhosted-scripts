@@ -62,7 +62,7 @@ Tick items off as they land.
 - [x] **[CONVENTION]** `setup_vaultwarden.sh: apt-get install -y argon2`
       is missing `--no-install-recommends` and `DEBIAN_FRONTEND=noninteractive`.
       Same for `setup_rootless_podman.sh: install_dependencies`.
-- [ ] **[CONVENTION]** `setup_rootless_podman.sh` — validate the username
+- [x] **[CONVENTION]** `setup_rootless_podman.sh` — validate the username
       argument (reject anything starting with `-` so `--help` doesn't
       create a user called `--help`).
 
