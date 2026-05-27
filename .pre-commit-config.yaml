@@ -33,3 +33,13 @@ repos:
     hooks:
       - id: shellcheck
         args: [--severity=warning]
+
+  # Formatting for shell scripts.
+  #   -i 4  : 4-space indentation (matches AGENTS.md)
+  #   -ci   : indent switch-case bodies
+  #   -bn   : binary ops (&&, ||) at start of continuation line
+  - repo: https://github.com/scop/pre-commit-shfmt
+    rev: v3.13.1-1
+    hooks:
+      - id: shfmt
+        args: [-i, "4", -ci, -bn]

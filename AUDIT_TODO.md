@@ -182,7 +182,7 @@ Tick items off as they land.
       ".backup …"` to a separate path, ideally off-host). Out of scope
       for `setup_vaultwarden.sh` itself, but the single biggest
       operational gap today.
-- [ ] **[POLISH]** Add `shfmt` (`-i 4 -ci -bn`) to `.pre-commit-config.yaml`.
+- [x] **[POLISH]** Add `shfmt` (`-i 4 -ci -bn`) to `.pre-commit-config.yaml`.
 - [ ] **[POLISH]** Bump shellcheck severity in pre-commit from `warning`
       to `info` once the above lands. Fix or `# shellcheck disable=` the
       long tail.
