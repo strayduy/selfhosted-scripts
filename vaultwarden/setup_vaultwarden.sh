@@ -50,7 +50,7 @@
 #        sudo -u vaultwarden XDG_RUNTIME_DIR=/run/user/$(id -u vaultwarden) \
 #            systemctl --user restart vaultwarden
 
-set -euo pipefail
+set -Eeuo pipefail
 IFS=$'\n\t'
 
 # Source shared helpers (info/success/warn/error/section, require_root, ...).
@@ -69,6 +69,7 @@ for _common_candidate in \
 done
 unset _common_candidate
 
+trap 'error "Failed at line $LINENO (command: $BASH_COMMAND)"' ERR
 
 
 # ── Constants ─────────────────────────────────────────────────────────────────

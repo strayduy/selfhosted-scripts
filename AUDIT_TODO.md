@@ -188,7 +188,7 @@ Tick items off as they land.
       long tail.
 - [ ] **[POLISH]** Add a GitHub Actions workflow that runs
       `pre-commit run --all-files` on PRs.
-- [ ] **[POLISH]** Adopt the AGENTS.md-recommended ERR trap in all three
+- [x] **[POLISH]** Adopt the AGENTS.md-recommended ERR trap in all three
       scripts:
       ```bash
       trap 'error "Failed at line $LINENO (command: $BASH_COMMAND)"' ERR

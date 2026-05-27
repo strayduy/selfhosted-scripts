@@ -4,13 +4,15 @@
 # Usage: sudo ./setup_rootless_podman.sh [username]
 # Default username: podman
 
-set -euo pipefail
+set -Eeuo pipefail
 IFS=$'\n\t'
 
 # Source shared helpers (info/success/warn/error, require_root, require_ubuntu, ...)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$SCRIPT_DIR/../lib/common.sh"
+
+trap 'error "Failed at line $LINENO (command: $BASH_COMMAND)"' ERR
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
