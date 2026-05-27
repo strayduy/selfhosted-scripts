@@ -149,7 +149,7 @@ Tick items off as they land.
       existence check aborts hard. A partial run leaves you stuck without
       manual cleanup. Either rename the existing one to a timestamped
       backup or accept-and-warn.
-- [ ] **[POLISH]** `setup_vaultwarden.sh` — the health-check loop sleeps
+- [x] **[POLISH]** `setup_vaultwarden.sh` — the health-check loop sleeps
       after the final failed attempt. Restructure so the final retry
       either succeeds or exits the loop without sleeping.
 - [ ] **[POLISH]** `setup_vaultwarden.sh` — `apt-get update -qq` masks

@@ -533,10 +533,11 @@ EOF
             success "Vaultwarden is responding on $hostname:$port"
             break
         fi
-        if (( i < retries )); then
-            info "  Not ready yet (attempt $i/$retries) — waiting 5s..."
-            sleep 5
-        fi
+        info "  Not ready yet (attempt $i/$retries)..."
+        # On the final attempt, exit the loop immediately without sleeping.
+        (( i == retries )) && break
+        info "  Waiting 5s before next attempt..."
+        sleep 5
     done
 
     if [[ "$healthy" = false ]]; then
