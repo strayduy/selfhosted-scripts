@@ -323,8 +323,8 @@ setup_storage() {
     local KERNEL_VERSION
     KERNEL_VERSION=$(uname -r)
     local KERNEL_MAJOR KERNEL_MINOR
-    KERNEL_MAJOR=$(echo "$KERNEL_VERSION" | cut -d. -f1)
-    KERNEL_MINOR=$(echo "$KERNEL_VERSION" | cut -d. -f2)
+    KERNEL_MAJOR=${KERNEL_VERSION%%.*}
+    KERNEL_MINOR=${KERNEL_VERSION#*.}; KERNEL_MINOR=${KERNEL_MINOR%%.*}
 
     local USE_FUSE_OVERLAYFS=true
     if ((KERNEL_MAJOR > 5 || (KERNEL_MAJOR == 5 && KERNEL_MINOR >= 11))); then

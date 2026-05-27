@@ -155,7 +155,7 @@ Tick items off as they land.
 - [x] **[POLISH]** `setup_vaultwarden.sh` — `apt-get update -qq` masks
       progress and errors; the other scripts use plain `apt-get update`.
       Standardize on no `-qq`.
-- [ ] **[POLISH]** `setup_rootless_podman.sh` — kernel version parsing
+- [x] **[POLISH]** `setup_rootless_podman.sh` — kernel version parsing
       via `echo "$KERNEL_VERSION" | cut -d. -f1` → use parameter
       expansion (`${KERNEL_VERSION%%.*}`).
 - [ ] **[POLISH]** `setup_rootless_podman.sh: setup_storage` — silently
