@@ -36,7 +36,7 @@ Tick items off as they land.
 - [x] **[BUG-likely]** `setup_vaultwarden.sh` Quadlet — `[Unit] After=default.target`
       combined with `[Install] WantedBy=default.target` is an inverse
       ordering loop. Drop the `After=` (or change to a concrete target).
-- [ ] **[BUG]** `bootstrap_server.sh: install_tailscale` — dead-code
+- [x] **[BUG]** `bootstrap_server.sh: install_tailscale` — dead-code
       placeholder check (`REPLACE_WITH_*`) can never fire now that a real
       hash is set. Either delete it or convert to "hash must be 64 hex chars".
 

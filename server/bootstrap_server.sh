@@ -574,9 +574,9 @@ install_tailscale() {
     # SHA256 of tailscale_1.96.2_amd64.deb — verify before updating the pin (see above).
     local ts_expected_hash="0431610d988ec54643a6beeae35f943aa3f11362577828138d367ca5aac29bc6"
 
-    # Abort early if the hardcoded hash placeholder has not been replaced
-    if [[ "$ts_expected_hash" == REPLACE_WITH_* ]]; then
-        error "TS_EXPECTED_HASH has not been set. Follow the instructions in install_tailscale() to obtain and hardcode the SHA256 for tailscale_${ts_version}_amd64.deb."
+    # Abort early if the hardcoded hash looks malformed (must be exactly 64 lowercase hex chars).
+    if [[ ! "$ts_expected_hash" =~ ^[0-9a-f]{64}$ ]]; then
+        error "ts_expected_hash is not a valid SHA-256 hex digest. Follow the instructions in install_tailscale() to obtain and hardcode the SHA256 for tailscale_${ts_version}_amd64.deb."
     fi
 
     # Skip download and install if this exact version is already installed
