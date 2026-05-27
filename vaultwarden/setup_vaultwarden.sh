@@ -427,12 +427,17 @@ EOF
     chown root:"$VW_SYSTEM_USER" "$VW_ENV_FILE"
     chmod 640 "$VW_ENV_FILE"
 
-    # Substitute the placeholder with the Argon2 hash. Use | as the sed
-    # delimiter since the hash contains / characters. The hash may also
-    # contain & which sed treats specially in the replacement — escape it.
-    local safe_hash
-    safe_hash=$(echo "$admin_token_hash" | sed 's/[&/\]/\\&/g')
-    sed -i "s|ADMIN_TOKEN_PLACEHOLDER|${safe_hash}|" "$VW_ENV_FILE"
+    # Substitute the placeholder with the Argon2id hash.
+    # Avoid sed: Argon2id hashes contain literal $ characters (e.g.
+    # $argon2id$v=19$m=…) alongside /, &, and \ — the full set is awkward to
+    # escape correctly for a sed replacement string. Shell parameter expansion
+    # treats the replacement as a plain literal, so there is nothing to escape.
+    # Using > instead of sed -i also preserves the chown/chmod applied above
+    # (sed -i replaces the inode on Linux, resetting ownership to root:root).
+    local env_content
+    env_content=$(< "$VW_ENV_FILE")
+    env_content="${env_content/ADMIN_TOKEN_PLACEHOLDER/$admin_token_hash}"
+    printf '%s\n' "$env_content" > "$VW_ENV_FILE"
 
     success "Config written (permissions: root-only read)"
 

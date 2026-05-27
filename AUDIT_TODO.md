@@ -39,6 +39,14 @@ Tick items off as they land.
 - [x] **[BUG]** `bootstrap_server.sh: install_tailscale` — dead-code
       placeholder check (`REPLACE_WITH_*`) can never fire now that a real
       hash is set. Either delete it or convert to "hash must be 64 hex chars".
+- [x] **[BUG]** `setup_vaultwarden.sh: cmd_setup` — the `$safe_hash` sed
+      escaping for `ADMIN_TOKEN_PLACEHOLDER` only escapes `&`, `/`, and `\`.
+      Argon2id hashes contain literal `$` characters (e.g.
+      `$argon2id$v=19$m=...`) which undergo shell variable expansion inside
+      the double-quoted `sed -i "s|...|${safe_hash}|"` command, silently
+      corrupting the stored hash. Users then cannot log into `/admin`.
+      Fix: escape `$` as well (`sed 's/[&/\$]/\\&/g'`), or avoid sed
+      entirely and write the value with `printf '%s\n'` / a heredoc.
 
 ---
 
