@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Vaultwarden Setup Script (Podman + Tailscale edition)
 #

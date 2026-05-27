@@ -44,7 +44,7 @@ Tick items off as they land.
 
 ## Tier 2 — `AGENTS.md` violations
 
-- [ ] **[CONVENTION]** `setup_vaultwarden.sh` shebang is `#!/bin/bash`.
+- [x] **[CONVENTION]** `setup_vaultwarden.sh` shebang is `#!/bin/bash`.
       Change to `#!/usr/bin/env bash`.
 - [ ] **[CONVENTION]** `setup_rootless_podman.sh` is indented with **2
       spaces** throughout. Reformat to 4 spaces (`shfmt -i 4 -w` will do
