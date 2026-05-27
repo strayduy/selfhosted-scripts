@@ -478,7 +478,8 @@ Volume=$VW_DATA_DIR:/data:Z
 # Bind only to the Tailscale interface — not reachable on the public IP.
 PublishPort=$ts_ip:$port:$port
 # Defense-in-depth resource limits in case of container escape or runaway process.
-PodmanArgs=--memory=512m --pids-limit=512
+Memory=512M
+PidsLimit=512
 
 [Service]
 # Restart on failure, but not on clean exits (e.g. manual stop).

@@ -139,7 +139,7 @@ Tick items off as they land.
 - [ ] **[POLISH]** `setup_vaultwarden.sh` — pin `VW_IMAGE` by digest
       instead of (or in addition to) the version tag. Document the update
       flow (`skopeo inspect docker://… | jq -r .Digest`).
-- [ ] **[POLISH]** `setup_vaultwarden.sh` — replace `PodmanArgs=--memory=512m
+- [x] **[POLISH]** `setup_vaultwarden.sh` — replace `PodmanArgs=--memory=512m
       --pids-limit=512` with first-class Quadlet fields `Memory=512M` and
       `PidsLimit=512`.
 - [ ] **[POLISH]** `setup_vaultwarden.sh` — drop the python3 dependency
