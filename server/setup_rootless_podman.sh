@@ -70,7 +70,7 @@ install_dependencies() {
     # The correct backend is selected and written to containers.conf in
     # setup_network_backend(), which runs after setup_apparmor().
     # Both packages are small and having both present is harmless.
-    apt-get install -y -qq uidmap podman fuse-overlayfs crun passt slirp4netns
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends uidmap podman fuse-overlayfs crun passt slirp4netns
 
     # Verify that newuidmap/newgidmap are SUID root after install.
     # On minimal images or custom DigitalOcean snapshots, the uidmap package

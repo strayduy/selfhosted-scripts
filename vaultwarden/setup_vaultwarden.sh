@@ -341,7 +341,7 @@ cmd_setup() {
     apt-get update -qq
     # podman-compose is no longer needed — we use Quadlet (.container files)
     # which generates a systemd unit directly, without docker-compose.
-    apt-get install -y argon2
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends argon2
     print_success "Dependencies installed"
 
     # Hash the admin token now that argon2 is available.
