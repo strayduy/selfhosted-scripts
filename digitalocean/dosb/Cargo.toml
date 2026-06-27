@@ -1,0 +1,26 @@
+[package]
+name = "dosb"
+version = "0.1.0"
+edition = "2021"
+description = "CLI for managing ephemeral DigitalOcean sandbox droplets"
+license = "MIT"
+
+[[bin]]
+name = "dosb"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+chrono = { version = "0.4", features = ["clock"] }
+clap = { version = "4", features = ["derive", "env"] }
+dialoguer = "0.11"
+directories = "5"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+shellexpand = "3"
+toml = "0.8"
+
+[profile.release]
+strip = true
+lto = true
