@@ -12,6 +12,20 @@ not portable across distros, and not intended for production multi-tenant use.
 Always assume the target environment is Ubuntu 24.04. Scripts should refuse
 to run on anything else.
 
+### Server-side vs. client-side
+
+The conventions in this file describe the **droplet-side bash scripts** — the
+top-level role/app directories (`server/`, `vaultwarden/`, ...). These run as
+`root` on Ubuntu 24.04.
+
+Anything under **`client/`** is the exception: those tools run from a client
+laptop, not the droplet. They are **not** bash, **not** run as root, and **not**
+bound to Ubuntu 24.04, so the bash style guide, preflight checks (`require_root`,
+`require_ubuntu`), and `apt`/systemd conventions below do **not** apply to them.
+Each `client/` subtree carries its own tooling and conventions (e.g.
+`client/digitalocean/dosb` is a Rust project with its own `Cargo.toml` and
+pinned toolchain). When adding a laptop-run tool, place it under `client/`.
+
 ## Script style guide
 
 These conventions apply to every `*.sh` file in the repo. When editing an

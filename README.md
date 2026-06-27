@@ -13,16 +13,18 @@ selfhosted-scripts/
 │   └── setup_rootless_podman.sh   # Create a rootless-Podman service account
 ├── vaultwarden/
 │   └── setup_vaultwarden.sh       # Deploy Vaultwarden behind Tailscale TLS
-├── digitalocean/
-│   ├── dosb-spec.md               # Design spec for the dosb CLI
-│   └── dosb/                      # Rust CLI for ephemeral sandbox droplets (runs on laptop)
+├── client/                        # Tools run from a client laptop, not the droplet
+│   └── digitalocean/
+│       ├── dosb-spec.md           # Design spec for the dosb CLI
+│       └── dosb/                  # Rust CLI for ephemeral sandbox droplets
 ├── AGENTS.md                      # Conventions for humans/AI editing this repo
 └── README.md
 ```
 
-> **Note:** everything under `server/` and `vaultwarden/` runs *on* the droplet.
-> `digitalocean/dosb` is different — it's a Rust CLI you run from your **laptop**
-> to create and tear down throwaway droplets via the DigitalOcean API.
+> **Convention:** top-level app/role directories (`server/`, `vaultwarden/`) run
+> *on* the droplet, as `root`, on Ubuntu 24.04. Anything under `client/` runs
+> from your **laptop** instead — e.g. `client/digitalocean/dosb` drives the
+> DigitalOcean API to create and tear down throwaway droplets.
 
 ## Typical droplet flow
 
@@ -113,7 +115,7 @@ Usage: sudo ./setup_vaultwarden.sh <tailscale-hostname> [--port 443] [--admin-to
 After setup, visit `https://<tailscale-hostname>`, create your account, then run
 `sudo ./setup_vaultwarden.sh harden` to disable signups and the `/admin` interface.
 
-### `digitalocean/dosb`
+### `client/digitalocean/dosb`
 
 A small Rust CLI (run from your **laptop**, not the droplet) for managing
 **ephemeral sandbox droplets** used as throwaway agentic-coding environments. It
@@ -137,8 +139,8 @@ accidentally destroy a real server or boot a sandbox from the wrong image. A
 global `--dry-run` validates inputs against the live API without making changes.
 
 Build with a pinned toolchain (`mise install` then `cargo build --release`); see
-[`digitalocean/dosb/README.md`](./digitalocean/dosb/README.md) and
-[`digitalocean/dosb-spec.md`](./digitalocean/dosb-spec.md) for details.
+[`client/digitalocean/dosb/README.md`](./client/digitalocean/dosb/README.md) and
+[`client/digitalocean/dosb-spec.md`](./client/digitalocean/dosb-spec.md) for details.
 
 Unlike the bash scripts, this is a Rust project and is **not** subject to the
 Ubuntu-24.04 / `root` assumptions in `AGENTS.md`.
