@@ -48,13 +48,13 @@ impl Client {
 
     // ── HTTP plumbing ────────────────────────────────────────────────────────
 
-    fn send(&self, build: impl Fn() -> RequestBuilder) -> Result<Response> {
+    fn send(&self, op: &str, build: impl Fn() -> RequestBuilder) -> Result<Response> {
         let mut attempt = 0;
         loop {
             let resp = build()
                 .bearer_auth(&self.token)
                 .send()
-                .context("sending request to the DigitalOcean API")?;
+                .with_context(|| format!("sending request to the DigitalOcean API ({op})"))?;
             let status = resp.status();
 
             // Retry on rate-limit / transient server errors with simple backoff.
@@ -68,26 +68,49 @@ impl Client {
             }
 
             if status == StatusCode::UNAUTHORIZED {
-                bail!("DigitalOcean API returned 401 Unauthorized — check {TOKEN_ENV}");
+                bail!(
+                    "DigitalOcean API returned 401 Unauthorized while trying to {op} — \
+                     check that {TOKEN_ENV} is valid and not expired"
+                );
+            }
+            if status == StatusCode::FORBIDDEN {
+                let body = resp.text().unwrap_or_default();
+                bail!(
+                    "DigitalOcean API error (403 Forbidden) while trying to {op}: {}\n\
+                     This usually means the API token in {TOKEN_ENV} is missing a required \
+                     scope for this operation. Check that the token has the scopes needed \
+                     to {op}.",
+                    api_message(&body)
+                );
             }
             if !status.is_success() {
                 let body = resp.text().unwrap_or_default();
-                bail!("DigitalOcean API error ({status}): {}", api_message(&body));
+                bail!(
+                    "DigitalOcean API error ({status}) while trying to {op}: {}",
+                    api_message(&body)
+                );
             }
             return Ok(resp);
         }
     }
 
-    fn get_json<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
+    fn get_json<T: DeserializeOwned>(&self, op: &str, path: &str) -> Result<T> {
         let url = format!("{API_BASE}{path}");
-        let resp = self.send(|| self.http.get(&url))?;
-        resp.json().context("decoding API response")
+        let resp = self.send(op, || self.http.get(&url))?;
+        resp.json()
+            .with_context(|| format!("decoding API response ({op})"))
     }
 
-    fn post_json<T: DeserializeOwned>(&self, path: &str, body: serde_json::Value) -> Result<T> {
+    fn post_json<T: DeserializeOwned>(
+        &self,
+        op: &str,
+        path: &str,
+        body: serde_json::Value,
+    ) -> Result<T> {
         let url = format!("{API_BASE}{path}");
-        let resp = self.send(|| self.http.post(&url).json(&body))?;
-        resp.json().context("decoding API response")
+        let resp = self.send(op, || self.http.post(&url).json(&body))?;
+        resp.json()
+            .with_context(|| format!("decoding API response ({op})"))
     }
 
     // ── Droplets ─────────────────────────────────────────────────────────────
@@ -97,7 +120,8 @@ impl Client {
         let mut out = Vec::new();
         let mut page = format!("/droplets?tag_name={tag}&per_page=200");
         loop {
-            let resp: models::DropletsResponse = self.get_json(&page)?;
+            let resp: models::DropletsResponse =
+                self.get_json("list droplets by tag", &page)?;
             out.extend(resp.droplets);
             match resp.links.next_page_path() {
                 Some(next) => page = next,
@@ -108,7 +132,8 @@ impl Client {
     }
 
     pub fn get_droplet(&self, id: u64) -> Result<Droplet> {
-        let resp: models::DropletResponse = self.get_json(&format!("/droplets/{id}"))?;
+        let resp: models::DropletResponse =
+            self.get_json("get droplet", &format!("/droplets/{id}"))?;
         Ok(resp.droplet)
     }
 
@@ -133,13 +158,14 @@ impl Client {
             "ipv6": false,
             "monitoring": false,
         });
-        let resp: models::DropletResponse = self.post_json("/droplets", body)?;
+        let resp: models::DropletResponse =
+            self.post_json("create droplet", "/droplets", body)?;
         Ok(resp.droplet)
     }
 
     pub fn delete_droplet(&self, id: u64) -> Result<()> {
         let url = format!("{API_BASE}/droplets/{id}");
-        self.send(|| self.http.delete(&url))?;
+        self.send("delete droplet", || self.http.delete(&url))?;
         Ok(())
     }
 
@@ -160,13 +186,15 @@ impl Client {
 
     fn droplet_action(&self, id: u64, body: serde_json::Value) -> Result<Action> {
         let resp: models::ActionResponse =
-            self.post_json(&format!("/droplets/{id}/actions"), body)?;
+            self.post_json("perform droplet action", &format!("/droplets/{id}/actions"), body)?;
         Ok(resp.action)
     }
 
     pub fn get_action(&self, droplet_id: u64, action_id: u64) -> Result<Action> {
-        let resp: models::ActionResponse =
-            self.get_json(&format!("/droplets/{droplet_id}/actions/{action_id}"))?;
+        let resp: models::ActionResponse = self.get_json(
+            "get droplet action",
+            &format!("/droplets/{droplet_id}/actions/{action_id}"),
+        )?;
         Ok(resp.action)
     }
 
@@ -177,7 +205,7 @@ impl Client {
         let mut out = Vec::new();
         let mut page = String::from("/images?private=true&type=snapshot&per_page=200");
         loop {
-            let resp: models::ImagesResponse = self.get_json(&page)?;
+            let resp: models::ImagesResponse = self.get_json("list snapshots", &page)?;
             out.extend(resp.images);
             match resp.links.next_page_path() {
                 Some(next) => page = next,
@@ -190,7 +218,8 @@ impl Client {
     // ── SSH keys ─────────────────────────────────────────────────────────────
 
     pub fn list_ssh_keys(&self) -> Result<Vec<SshKey>> {
-        let resp: models::SshKeysResponse = self.get_json("/account/keys?per_page=200")?;
+        let resp: models::SshKeysResponse =
+            self.get_json("list SSH keys", "/account/keys?per_page=200")?;
         Ok(resp.ssh_keys)
     }
 
