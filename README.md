@@ -103,6 +103,7 @@ bound to the Tailscale interface IP.
 ```
 Usage: sudo ./setup_vaultwarden.sh <tailscale-hostname> [--port 443] [--admin-token <token>]
        sudo ./setup_vaultwarden.sh harden                  # disable signups + admin UI
+       sudo ./setup_vaultwarden.sh update [1.35.5]         # roll forward to a new image
        sudo ./setup_vaultwarden.sh cert-refresh <host>     # called by daily cron
 ```
 
@@ -114,6 +115,14 @@ Usage: sudo ./setup_vaultwarden.sh <tailscale-hostname> [--port 443] [--admin-to
 
 After setup, visit `https://<tailscale-hostname>`, create your account, then run
 `sudo ./setup_vaultwarden.sh harden` to disable signups and the `/admin` interface.
+
+**Updating.** Never re-run `setup` to update — it regenerates the admin token and
+undoes `harden`. Use the `update` subcommand instead: it stops the container,
+tars `/srv/vaultwarden` into `/root/vaultwarden-backups/`, repins `Image=` in the
+quadlet, restarts, health-checks `/alive`, and automatically rolls back to the
+previous image if the new one fails to come up. With no argument it updates to
+the `VW_IMAGE` version pinned at the top of the script; bump that constant in
+the repo too so fresh installs match.
 
 ### `client/digitalocean/dosb`
 

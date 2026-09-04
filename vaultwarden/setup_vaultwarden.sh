@@ -40,6 +40,7 @@
 # Examples:
 #   sudo ./setup_vaultwarden.sh my-droplet.tail1234.ts.net
 #   sudo ./setup_vaultwarden.sh my-droplet.tail1234.ts.net --port 8443
+#   sudo ./setup_vaultwarden.sh update 1.35.5
 #
 # After setup:
 #   1. Visit https://<tailscale-hostname> and create your account
@@ -73,11 +74,11 @@ trap 'error "Failed at line $LINENO (command: $BASH_COMMAND)"' ERR
 
 
 # ── Constants ─────────────────────────────────────────────────────────────────
-# Pin to a specific version for reproducible deploys. To update, change this
-# value and re-run the setup, or hand-edit the installed quadlet at
-# /home/vaultwarden/.config/containers/systemd/vaultwarden.container and run
-# `systemctl daemon-reload && systemctl --user restart vaultwarden` as the
-# vaultwarden user.
+# Pin to a specific version for reproducible deploys. To update an existing
+# instance, bump this value and run `sudo ./setup_vaultwarden.sh update`
+# (or pass an explicit version: `update 1.35.5`). Do NOT re-run `setup` to
+# update — it rewrites the env file with a fresh admin token and undoes
+# `harden`.
 # v1.35.4 ships Vaultwarden 1.35.4; WebSockets are on the main port (v1.29+).
 VW_IMAGE="docker.io/vaultwarden/server:1.35.4"
 
@@ -96,6 +97,13 @@ VW_ENV_FILE="$VW_CONF_DIR/vaultwarden.conf"
 # Podman 4.4+; Ubuntu 24.04's 4.9.3 supports it natively.
 VW_QUADLET_DIR="/home/$VW_SYSTEM_USER/.config/containers/systemd"
 VW_QUADLET_FILE="$VW_QUADLET_DIR/vaultwarden.container"
+
+# Data-dir backups taken by `update` before restarting on a new image.
+VW_BACKUP_DIR="/root/vaultwarden-backups"
+
+# Health check after (re)starting the container: 12 × 5s = 60s.
+VW_HEALTH_RETRIES=12
+VW_HEALTH_INTERVAL=5
 
 # Where this script and its shared helpers are installed during `setup`, so the
 # cert-refresh cron job and post-setup invocations (`harden`, `cert-refresh`)
@@ -213,6 +221,205 @@ cmd_harden() {
     info "To re-enable the admin interface, edit $VW_ENV_FILE,"
     info "uncomment ADMIN_TOKEN, and run:"
     info "  sudo -u $VW_SYSTEM_USER XDG_RUNTIME_DIR=/run/user/\$(id -u $VW_SYSTEM_USER) systemctl --user restart vaultwarden"
+    echo ""
+}
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SHARED HELPERS — used by both `setup` and `update`
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Poll https://<hostname>:<port>/alive until Vaultwarden answers.
+# Returns 0 when healthy, 1 on timeout — callers decide how to react, so this
+# must never call error().
+#
+# Usage: wait_for_healthy <hostname> <port> <ts_ip>
+wait_for_healthy() {
+    local hostname="$1" port="$2" ts_ip="$3"
+
+    info "Waiting for Vaultwarden to be ready..."
+    local i
+    for (( i=1; i<=VW_HEALTH_RETRIES; i++ )); do
+        # Use --resolve to map the Tailscale hostname to its IP so curl can
+        # verify the TLS certificate's SAN properly — avoids --insecure.
+        if curl -sf --resolve "${hostname}:${port}:${ts_ip}" \
+                "https://${hostname}:${port}/alive" &>/dev/null; then
+            success "Vaultwarden is responding on $hostname:$port"
+            return 0
+        fi
+        info "  Not ready yet (attempt $i/$VW_HEALTH_RETRIES)..."
+        # On the final attempt, exit the loop immediately without sleeping.
+        (( i == VW_HEALTH_RETRIES )) && break
+        info "  Waiting ${VW_HEALTH_INTERVAL}s before next attempt..."
+        sleep "$VW_HEALTH_INTERVAL"
+    done
+
+    warn "Vaultwarden didn't respond after $(( VW_HEALTH_RETRIES * VW_HEALTH_INTERVAL ))s"
+    return 1
+}
+
+# Echo the image reference currently pinned in the installed quadlet.
+quadlet_image() {
+    local line
+    line=$(grep -m1 '^Image=' "$VW_QUADLET_FILE" 2>/dev/null || true)
+    printf '%s' "${line#Image=}"
+}
+
+# Echo the host port from the quadlet's PublishPort=<ip>:<host>:<container>.
+quadlet_port() {
+    local line
+    line=$(grep -m1 '^PublishPort=' "$VW_QUADLET_FILE" 2>/dev/null || true)
+    line="${line#PublishPort=}"
+    # <ip>:<hostport>:<containerport> — take the middle field.
+    printf '%s' "$(cut -d: -f2 <<< "$line")"
+}
+
+# Rewrite the Image= line of the installed quadlet in place.
+#
+# Read-modify-write with shell parameter expansion rather than `sed -i`:
+# sed -i replaces the inode, which would reset the file to root:root and break
+# the quadlet generator (it only reads files owned by the user). Writing via
+# `tee` as the vaultwarden user keeps ownership and permissions intact.
+#
+# Usage: set_quadlet_image <image-ref>
+set_quadlet_image() {
+    local new_image="$1"
+    local content="" line
+    while IFS= read -r line; do
+        # Only a line *starting* with Image= is the directive; the update
+        # instructions in the file's header comment must stay untouched.
+        [[ "$line" == Image=* ]] && line="Image=$new_image"
+        content+="$line"$'\n'
+    done < "$VW_QUADLET_FILE"
+    printf '%s' "$content" | run_as_user "$VW_SYSTEM_USER" tee "$VW_QUADLET_FILE" > /dev/null
+    chmod 644 "$VW_QUADLET_FILE"
+}
+
+# ══════════════════════════════════════════════════════════════════════════════
+# UPDATE — roll the container forward to a new image, with backup + rollback
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# Deliberately does NOT touch $VW_ENV_FILE: re-running `setup` would regenerate
+# the admin token and undo `harden`. This only swaps the pinned image.
+cmd_update() {
+    local target="" do_backup=true
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --no-backup) do_backup=false; shift ;;
+            --help|-h)   usage; exit 0 ;;
+            -*)          error "Unknown option: $1" ;;
+            *)
+                [[ -n "$target" ]] && error "Unexpected extra argument: $1"
+                target="$1"; shift
+                ;;
+        esac
+    done
+
+    # ── Preflight ─────────────────────────────────────────────────────────────
+    [[ -f "$VW_QUADLET_FILE" ]] \
+        || error "No quadlet at $VW_QUADLET_FILE — has Vaultwarden been set up?"
+    require_rootless_podman_user "$VW_SYSTEM_USER"
+
+    local current_image
+    current_image=$(quadlet_image)
+    [[ -n "$current_image" ]] || error "No Image= line found in $VW_QUADLET_FILE"
+
+    # Resolve the target image reference:
+    #   (no arg)          -> VW_IMAGE pinned at the top of this script
+    #   1.35.5            -> <current repository>:1.35.5
+    #   repo/name:tag     -> used verbatim (allows switching to the alpine tag)
+    local target_image
+    if [[ -z "$target" ]]; then
+        target_image="$VW_IMAGE"
+    elif [[ "$target" == *"/"* ]]; then
+        target_image="$target"
+    else
+        target_image="${current_image%:*}:${target}"
+    fi
+    [[ "$target_image" =~ ^[A-Za-z0-9._/-]+(:[A-Za-z0-9._-]+)?(@sha256:[a-f0-9]{64})?$ ]] \
+        || error "Invalid image reference: $target_image"
+
+    section "Updating Vaultwarden"
+    info "Current image: $current_image"
+    info "Target image:  $target_image"
+
+    if [[ "$current_image" == "$target_image" ]]; then
+        success "Already running $target_image — nothing to do"
+        return 0
+    fi
+
+    # Health-check coordinates, resolved before we touch anything so a missing
+    # tailnet aborts the update rather than a half-applied one.
+    local hostname ts_ip port
+    hostname=$(tailscale status --json 2>/dev/null \
+        | jq -r '.Self.DNSName | rtrimstr(".")' 2>/dev/null || echo "")
+    ts_ip=$(tailscale ip -4 2>/dev/null || true)
+    port=$(quadlet_port)
+
+    # ── Step 1: Pull the new image (before stopping anything) ─────────────────
+    info "Step 1: Pulling $target_image..."
+    run_as_user "$VW_SYSTEM_USER" podman pull "$target_image"
+    success "Image pulled"
+
+    # ── Step 2: Stop the service ──────────────────────────────────────────────
+    info "Step 2: Stopping Vaultwarden..."
+    systemctl_user "$VW_SYSTEM_USER" stop vaultwarden.service || true
+    success "Service stopped"
+
+    # ── Step 3: Back up the data directory ────────────────────────────────────
+    # Taken with the container stopped so the SQLite DB is quiescent.
+    local backup_file=""
+    if [[ "$do_backup" == true ]]; then
+        mkdir -p "$VW_BACKUP_DIR"
+        chmod 700 "$VW_BACKUP_DIR"
+        backup_file="$VW_BACKUP_DIR/vaultwarden-$(date +%Y%m%d-%H%M%S)-pre-${target_image##*:}.tar.gz"
+        info "Step 3: Backing up $VW_DATA_DIR to $backup_file..."
+        tar czf "$backup_file" -C "$(dirname "$VW_DATA_DIR")" "$(basename "$VW_DATA_DIR")"
+        chmod 600 "$backup_file"
+        success "Backup written ($(du -h "$backup_file" | cut -f1))"
+    else
+        warn "Step 3: --no-backup given — skipping data backup"
+    fi
+
+    # ── Step 4: Repin the image and restart ───────────────────────────────────
+    info "Step 4: Repinning image and reloading quadlet..."
+    set_quadlet_image "$target_image"
+    systemctl_user "$VW_SYSTEM_USER" daemon-reload
+    # `start` can legitimately fail (bad image, failed DB migration); handle it
+    # ourselves so the rollback below runs instead of the ERR trap firing.
+    local started=true
+    systemctl_user "$VW_SYSTEM_USER" start vaultwarden.service || started=false
+
+    # ── Step 5: Health check, rolling back on failure ─────────────────────────
+    local healthy=false
+    if [[ "$started" == true ]]; then
+        if [[ -n "$hostname" && -n "$ts_ip" && -n "$port" ]]; then
+            wait_for_healthy "$hostname" "$port" "$ts_ip" && healthy=true
+        else
+            warn "Could not determine hostname/IP/port — skipping HTTP health check"
+            systemctl_user "$VW_SYSTEM_USER" is-active --quiet vaultwarden.service \
+                && healthy=true
+        fi
+    fi
+
+    if [[ "$healthy" == false ]]; then
+        warn "Update to $target_image failed — rolling back to $current_image"
+        set_quadlet_image "$current_image"
+        systemctl_user "$VW_SYSTEM_USER" daemon-reload
+        systemctl_user "$VW_SYSTEM_USER" start vaultwarden.service || true
+        warn "Rolled back. Inspect the failure with:"
+        warn "  sudo -u $VW_SYSTEM_USER journalctl --user-unit vaultwarden -n 100"
+        [[ -n "$backup_file" ]] && warn "Data backup (restore if a migration corrupted the DB): $backup_file"
+        error "Update aborted"
+    fi
+
+    section "Vaultwarden updated to $target_image"
+    echo ""
+    [[ -z "$backup_file" ]] || info "Pre-update backup: $backup_file"
+    info "Old images are kept for rollback. Remove them once you're happy:"
+    info "  sudo -u $VW_SYSTEM_USER podman image prune -f"
+    info "To roll back manually:"
+    info "  sudo $0 update ${current_image##*:}"
     echo ""
 }
 
@@ -467,11 +674,9 @@ EOF
 #       systemctl --user {start,stop,restart,status} vaultwarden
 #   journalctl --user-unit vaultwarden -f
 #
-# Update:  change Image= here (or VW_IMAGE in setup_vaultwarden.sh), then:
-#   sudo -u $VW_SYSTEM_USER podman pull <new image>
-#   sudo -u $VW_SYSTEM_USER systemctl --user daemon-reload
-#   sudo -u $VW_SYSTEM_USER systemctl --user restart vaultwarden
-#   sudo -u $VW_SYSTEM_USER podman image prune -f
+# Update:  do not hand-edit Image= — use the update subcommand, which backs up
+#          the data dir, health-checks the new image and rolls back on failure:
+#   sudo $INSTALLED_SCRIPT update 1.35.5
 
 [Unit]
 Description=Vaultwarden password manager (Podman Quadlet + Tailscale)
@@ -522,27 +727,7 @@ EOF
     success "Quadlet unit activated and started"
 
     # ── Step 9: Health check ──────────────────────────────────────────────────
-    info "Waiting for Vaultwarden to be ready..."
-    local healthy=false
-    local retries=12  # 12 × 5s = 60s timeout
-    for (( i=1; i<=retries; i++ )); do
-        # Use --resolve to map the Tailscale hostname to its IP so curl can
-        # verify the TLS certificate's SAN properly — avoids --insecure.
-        if curl -sf --resolve "${hostname}:${port}:${ts_ip}" \
-                "https://${hostname}:${port}/alive" &>/dev/null; then
-            healthy=true
-            success "Vaultwarden is responding on $hostname:$port"
-            break
-        fi
-        info "  Not ready yet (attempt $i/$retries)..."
-        # On the final attempt, exit the loop immediately without sleeping.
-        (( i == retries )) && break
-        info "  Waiting 5s before next attempt..."
-        sleep 5
-    done
-
-    if [[ "$healthy" = false ]]; then
-        warn "Vaultwarden didn't respond after 60s"
+    if ! wait_for_healthy "$hostname" "$port" "$ts_ip"; then
         warn "Check logs with: sudo -u $VW_SYSTEM_USER journalctl --user-unit vaultwarden -n 50"
     fi
 
@@ -568,10 +753,7 @@ EOF
     info "  Cert refresh:  $INSTALLED_SCRIPT cert-refresh $hostname  (cron: /etc/cron.d/vaultwarden-cert-refresh)"
     echo ""
     info "To update Vaultwarden in future:"
-    info "  sudo -u $VW_SYSTEM_USER podman pull <new image>"
-    info "  sudo -u $VW_SYSTEM_USER XDG_RUNTIME_DIR=/run/user/\$(id -u $VW_SYSTEM_USER) \\"
-    info "      systemctl --user daemon-reload && systemctl --user restart vaultwarden"
-    info "  sudo -u $VW_SYSTEM_USER podman image prune -f   # clean up the old image"
+    info "  sudo $INSTALLED_SCRIPT update <version>   # e.g. update 1.35.5"
     echo ""
 }
 
@@ -591,6 +773,7 @@ enabled in the Tailscale admin console.
 Usage:
   sudo ./setup_vaultwarden.sh <tailscale-hostname> [options]
   sudo ./setup_vaultwarden.sh harden
+  sudo ./setup_vaultwarden.sh update [<version>|<image>] [--no-backup]
   sudo ./setup_vaultwarden.sh cert-refresh <tailscale-hostname>
   sudo ./setup_vaultwarden.sh --help
 
@@ -601,9 +784,21 @@ Arguments:
 Subcommands:
   harden                 Disable signups and the admin interface after
                          initial account creation.
+  update [<version>]     Roll the container forward to a new Vaultwarden
+                         image. Backs up $VW_DATA_DIR, repins Image= in the
+                         quadlet, restarts, health-checks, and rolls back to
+                         the previous image if the new one doesn't come up.
+                         Never touches $VW_ENV_FILE, so 'harden' settings and
+                         the admin token survive. With no argument, updates
+                         to the version pinned in this script ($VW_IMAGE).
+                         Accepts a bare tag (1.35.5) or a full image
+                         reference (docker.io/vaultwarden/server:1.35.5-alpine).
   cert-refresh <host>    Fetch/renew the Tailscale TLS certificate and
                          restart Vaultwarden if the cert changed. Run by
                          cron daily; safe to invoke manually.
+
+Options (update only):
+  --no-backup            Skip the pre-update tarball of $VW_DATA_DIR.
 
 Options (setup only):
   --port <port>          Port to bind Vaultwarden on the Tailscale
@@ -616,6 +811,7 @@ Examples:
   sudo ./setup_vaultwarden.sh my-droplet.tail1234.ts.net
   sudo ./setup_vaultwarden.sh my-droplet.tail1234.ts.net --port 8443
   sudo ./setup_vaultwarden.sh harden
+  sudo ./setup_vaultwarden.sh update 1.35.5
   sudo ./setup_vaultwarden.sh cert-refresh my-droplet.tail1234.ts.net
 
 Prerequisites:
@@ -641,6 +837,11 @@ After setup:
      /root/vaultwarden-admin-token.txt — delete after use).
   3. Once your account is created, lock down the instance:
        sudo ./setup_vaultwarden.sh harden
+
+Updating later:
+  sudo $INSTALLED_SCRIPT update 1.35.5
+  Re-running 'setup' is NOT an update path: it regenerates the admin token
+  and re-enables signups.
 EOF
 }
 
@@ -649,6 +850,7 @@ EOF
 # ══════════════════════════════════════════════════════════════════════════════
 case "${1:-}" in
     harden)       cmd_harden ;;
+    update)       shift; cmd_update "$@" ;;
     cert-refresh) cmd_cert_refresh "${2:-}" ;;
     --help|-h)    usage ;;
     "")
