@@ -59,16 +59,29 @@ IFS=$'\n\t'
 # installed path (when invoked from /usr/local/sbin/, e.g. by the cert-refresh
 # cron job set up by this script's `setup` command).
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_common_found=false
 for _common_candidate in \
     "$SCRIPT_DIR/../lib/common.sh" \
     "/usr/local/lib/selfhosted-scripts/common.sh"; do
     if [[ -f "$_common_candidate" ]]; then
         # shellcheck source=../lib/common.sh
         . "$_common_candidate"
+        _common_found=true
         break
     fi
 done
-unset _common_candidate
+# Fail loudly here rather than letting every later call to info/error/
+# require_root die with 'command not found'. error() itself is defined in
+# common.sh, so this one message has to be a plain echo.
+if [[ "$_common_found" != true ]]; then
+    echo "[ERROR] Could not find lib/common.sh. Looked in:" >&2
+    echo "          $SCRIPT_DIR/../lib/common.sh" >&2
+    echo "          /usr/local/lib/selfhosted-scripts/common.sh" >&2
+    echo "        Run this script from a full clone of the repo (it needs the" >&2
+    echo "        sibling lib/ directory), not as a lone copied file." >&2
+    exit 1
+fi
+unset _common_candidate _common_found
 
 trap 'error "Failed at line $LINENO (command: $BASH_COMMAND)"' ERR
 
