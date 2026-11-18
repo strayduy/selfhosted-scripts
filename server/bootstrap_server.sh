@@ -29,8 +29,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 trap 'error "Failed at line $LINENO (command: $BASH_COMMAND)"' ERR
 
-
-
 # ── Configuration ─────────────────────────────────────────────────────────────
 # Populated by parse_args(); declared up here so set -u doesn't fire if any
 # function is somehow called before parsing.
@@ -46,7 +44,7 @@ REBOOT_REQUIRED=false
 # ── Argument parsing ──────────────────────────────────────────────────────────
 
 usage() {
-    cat << EOF
+    cat <<EOF
 Usage: $0 <username> [ssh_port] [--tailscale] [--ts-authkey <key>] [--ts-ssh]
 Example: $0 myuser 2222 --tailscale --ts-authkey tskey-auth-xxx
 
@@ -73,33 +71,38 @@ parse_args() {
     # treated as a flag or ignored.
     if [[ $# -ge 2 && "$2" =~ ^[0-9]+$ ]]; then
         SSH_PORT="$2"
-        shift 2  # consume username + port; flags start at $1
+        shift 2 # consume username + port; flags start at $1
     elif [[ $# -ge 2 && "$2" == --* ]]; then
-        SSH_PORT="22"  # $2 is a flag — no port supplied, leave it for flag parsing
-        shift 1        # consume username only
+        SSH_PORT="22" # $2 is a flag — no port supplied, leave it for flag parsing
+        shift 1       # consume username only
     elif [[ $# -ge 2 ]]; then
         error "Invalid second argument: '$2'. Expected a numeric SSH port or a --flag."
     else
-        SSH_PORT="22"  # only username was supplied
+        SSH_PORT="22" # only username was supplied
         shift 1
     fi
 
     # Validate SSH port is a number in the valid range
-    if ! [[ "$SSH_PORT" =~ ^[0-9]+$ ]] || (( SSH_PORT < 1 || SSH_PORT > 65535 )); then
+    if ! [[ "$SSH_PORT" =~ ^[0-9]+$ ]] || ((SSH_PORT < 1 || SSH_PORT > 65535)); then
         error "Invalid SSH port: '$SSH_PORT'. Must be a number between 1 and 65535."
     fi
 
     # Parse optional flags — $@ now contains only flags
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --tailscale)    INSTALL_TAILSCALE=true ;;
+            --tailscale) INSTALL_TAILSCALE=true ;;
             --ts-authkey)
                 if [[ -z "${2:-}" || "$2" == --* ]]; then
                     error "--ts-authkey requires a value"
                 fi
-                TS_AUTHKEY="$2"; shift ;;
-            --ts-ssh)       TS_SSH=true ;;
-            --help|-h)      usage; exit 0 ;;
+                TS_AUTHKEY="$2"
+                shift
+                ;;
+            --ts-ssh) TS_SSH=true ;;
+            --help | -h)
+                usage
+                exit 0
+                ;;
             *) warn "Unknown option: $1" ;;
         esac
         shift
@@ -203,7 +206,7 @@ grant_admin_privileges() {
 
 configure_password_policies() {
     info "Step 5: Configuring password policies..."
-    cat > /etc/security/pwquality.conf << EOF
+    cat >/etc/security/pwquality.conf <<EOF
 # Password quality requirements
 minlen = 12
 minclass = 3
@@ -221,7 +224,7 @@ EOF
     #
     # On Ubuntu 24.04, pam_faillock is included in the default pam-auth-update
     # profile; enabling it here is safe and non-destructive.
-    cat > /etc/security/faillock.conf << EOF
+    cat >/etc/security/faillock.conf <<EOF
 deny = 3
 unlock_time = 1800
 silent
@@ -263,8 +266,8 @@ setup_user_ssh_keys() {
         # Tailscale SSH, there is no way back in — abort before we lock ourselves out.
         if [[ "$TS_SSH" == false ]]; then
             error "No keys found in $root_authorized_keys and --ts-ssh was not requested." \
-                  "configure_sshd will disable password auth, guaranteeing a lockout." \
-                  "Add your public key to /root/.ssh/authorized_keys and re-run, or pass --ts-ssh."
+                "configure_sshd will disable password auth, guaranteeing a lockout." \
+                "Add your public key to /root/.ssh/authorized_keys and re-run, or pass --ts-ssh."
         fi
         warn "No keys found in $root_authorized_keys — authorized_keys created empty"
         warn "--ts-ssh is enabled; you can still reach the server over the tailnet."
@@ -298,7 +301,7 @@ configure_sshd() {
     sed -i -E 's/^#?PubkeyAuthentication\s+\S+/PubkeyAuthentication yes/' "$sshd_config"
 
     # Add additional security settings (safe to append — we always start from pristine)
-    cat >> "$sshd_config" << EOF
+    cat >>"$sshd_config" <<EOF
 
 # Additional Security Settings
 # Note: 'Protocol 2' was removed in OpenSSH 7.6 — SSHv1 is gone, no directive needed
@@ -339,7 +342,7 @@ EOF
 # live here; that way configure_swap() never needs to append to this file
 # (which would silently disappear on any re-run that skips configure_swap).
 write_sysctl_hardening() {
-    cat > /etc/sysctl.d/99-hardening.conf << 'EOF'
+    cat >/etc/sysctl.d/99-hardening.conf <<'EOF'
 # Kernel / network security and VM tuning (managed by bootstrap_server.sh)
 # Network hardening
 net.ipv4.conf.default.rp_filter=1
@@ -386,7 +389,7 @@ secure_shared_memory() {
     local dropin_file="${dropin_dir}/hardening.conf"
 
     mkdir -p "${dropin_dir}"
-    cat > "${dropin_file}" <<'EOF'
+    cat >"${dropin_file}" <<'EOF'
 [Mount]
 Options=defaults,noexec,nosuid,nodev
 EOF
@@ -418,7 +421,7 @@ configure_ufw() {
 
 configure_fail2ban() {
     info "Step 11: Configuring Fail2Ban..."
-    cat > /etc/fail2ban/jail.local << EOF
+    cat >/etc/fail2ban/jail.local <<EOF
 [DEFAULT]
 bantime = 12h
 findtime = 10m
@@ -458,7 +461,7 @@ EOF
 
 configure_unattended_upgrades() {
     info "Step 12: Configuring automatic security updates..."
-    cat > /etc/apt/apt.conf.d/50unattended-upgrades << EOF
+    cat >/etc/apt/apt.conf.d/50unattended-upgrades <<EOF
 Unattended-Upgrade::Allowed-Origins {
     "\${distro_id}:\${distro_codename}";
     "\${distro_id}:\${distro_codename}-security";
@@ -475,7 +478,7 @@ Unattended-Upgrade::Automatic-Reboot "false";
 Unattended-Upgrade::Automatic-Reboot-Time "02:00";
 EOF
 
-    cat > /etc/apt/apt.conf.d/20auto-upgrades << EOF
+    cat >/etc/apt/apt.conf.d/20auto-upgrades <<EOF
 APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";
 APT::Periodic::AutocleanInterval "7";
@@ -503,7 +506,7 @@ configure_swap() {
         #                   <N>M / <N>m  →  N MiB
         local swap_mib
         if [[ "$SWAP_SIZE" =~ ^([0-9]+)[Gg]$ ]]; then
-            swap_mib=$(( BASH_REMATCH[1] * 1024 ))
+            swap_mib=$((BASH_REMATCH[1] * 1024))
         elif [[ "$SWAP_SIZE" =~ ^([0-9]+)[Mm]$ ]]; then
             swap_mib=${BASH_REMATCH[1]}
         else
@@ -514,7 +517,7 @@ configure_swap() {
     chmod 600 /swapfile
     mkswap /swapfile
     swapon /swapfile
-    echo '/swapfile none swap sw 0 0' >> /etc/fstab
+    echo '/swapfile none swap sw 0 0' >>/etc/fstab
     # vm.swappiness and vm.vfs_cache_pressure are already written (and
     # applied) by configure_sysctl_hardening() via write_sysctl_hardening().
     # Do not append here — doing so would cause duplicates on the first run
@@ -583,7 +586,7 @@ harden_sudo() {
     # log_input,log_output is intentionally omitted: it records every keystroke and every
     # output byte of every sudo session under /var/log/sudo-io/, which is excessive for
     # a single-admin droplet. logfile= provides command-level audit which is sufficient.
-    cat > /etc/sudoers.d/hardening << 'EOF'
+    cat >/etc/sudoers.d/hardening <<'EOF'
 Defaults requiretty
 Defaults timestamp_timeout=5
 Defaults logfile=/var/log/sudo.log
