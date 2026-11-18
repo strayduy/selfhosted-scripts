@@ -7,17 +7,16 @@
 # hardening, and optionally joins the machine to a Tailscale network.
 #
 # Usage:
-#   ./bootstrap_server.sh <username> [ssh_port] [--tailscale] [--ts-authkey <key>] [--ts-ssh]
+#   ./bootstrap_server.sh <username> [ssh_port] [--tailscale] [--ts-ssh]
 #
 # Example:
-#   ./bootstrap_server.sh myuser 2222 --tailscale --ts-authkey tskey-auth-xxx --ts-ssh
+#   ./bootstrap_server.sh myuser 2222 --tailscale --ts-ssh
 #
 # Options:
-#   --tailscale          Install and configure Tailscale
-#   --ts-authkey <key>   Tailscale auth key for unattended provisioning
-#                        Generate at https://login.tailscale.com/admin/settings/keys
-#                        Use ephemeral keys for short-lived droplets
-#   --ts-ssh             Enable Tailscale SSH (replaces key-based SSH over tailnet)
+#   --tailscale          Install and configure Tailscale. You'll be prompted
+#                        (input hidden) for an auth key; leave it blank to run
+#                        'tailscale up' manually afterwards.
+#   --ts-ssh             Enable Tailscale SSH (requires --tailscale)
 
 set -Eeuo pipefail
 IFS=$'\n\t'
@@ -37,6 +36,7 @@ USERNAME=""
 SSH_PORT="22"
 INSTALL_TAILSCALE=false
 TS_AUTHKEY=""
+TS_CONNECTED=false
 TS_SSH=false
 SWAP_SIZE="2G"
 REBOOT_REQUIRED=false
@@ -45,45 +45,54 @@ REBOOT_REQUIRED=false
 
 usage() {
     cat <<EOF
-Usage: $0 <username> [ssh_port] [--tailscale] [--ts-authkey <key>] [--ts-ssh]
-Example: $0 myuser 2222 --tailscale --ts-authkey tskey-auth-xxx
+Usage: $0 <username> [ssh_port] [--tailscale] [--ts-ssh]
+Example: $0 myuser 2222 --tailscale --ts-ssh
 
 Options:
-  --tailscale          Install and configure Tailscale
-  --ts-authkey <key>   Tailscale auth key for unattended provisioning
-                       Generate at https://login.tailscale.com/admin/settings/keys
-                       Use ephemeral keys for short-lived droplets
-  --ts-ssh             Enable Tailscale SSH (replaces key-based SSH over tailnet)
+  --tailscale   Install and configure Tailscale. You'll be prompted (input
+                hidden) for an auth key; leave it blank to run 'tailscale up'
+                manually afterwards. Generate keys at
+                https://login.tailscale.com/admin/settings/keys
+  --ts-ssh      Enable Tailscale SSH and close the public SSH port
+                (requires --tailscale)
+  -h, --help    Show this help
 EOF
 }
 
 parse_args() {
+    # Handle --help anywhere on the command line before treating $1 as a
+    # username, so `./bootstrap_server.sh --help` never creates a user.
+    local arg
+    for arg in "$@"; do
+        if [[ "$arg" == "--help" || "$arg" == "-h" ]]; then
+            usage
+            exit 0
+        fi
+    done
+
     if [[ $# -lt 1 ]]; then
         usage >&2
         exit 1
     fi
 
     USERNAME="$1"
+    shift
 
-    # The second positional argument is optional and must be numeric (SSH port).
-    # We check it explicitly here rather than using a fragile inline shift trick,
-    # so that a non-numeric $2 is rejected with a clear error rather than silently
-    # treated as a flag or ignored.
-    if [[ $# -ge 2 && "$2" =~ ^[0-9]+$ ]]; then
-        SSH_PORT="$2"
-        shift 2 # consume username + port; flags start at $1
-    elif [[ $# -ge 2 && "$2" == --* ]]; then
-        SSH_PORT="22" # $2 is a flag — no port supplied, leave it for flag parsing
-        shift 1       # consume username only
-    elif [[ $# -ge 2 ]]; then
-        error "Invalid second argument: '$2'. Expected a numeric SSH port or a --flag."
-    else
-        SSH_PORT="22" # only username was supplied
-        shift 1
+    # Same rules as adduser's default NAME_REGEX. Reject root explicitly:
+    # AllowUsers root + PermitRootLogin no would be a guaranteed lockout.
+    if [[ ! "$USERNAME" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]; then
+        error "Invalid username: '$USERNAME'. Use lowercase letters, digits, '_' or '-'."
+    fi
+    if [[ "$USERNAME" == "root" ]]; then
+        error "Username must not be 'root' (root SSH login is disabled by this script)."
     fi
 
-    # Validate SSH port is a number in the valid range
-    if ! [[ "$SSH_PORT" =~ ^[0-9]+$ ]] || ((SSH_PORT < 1 || SSH_PORT > 65535)); then
+    # The second positional argument is optional and must be numeric (SSH port).
+    if [[ $# -ge 1 && "$1" != --* ]]; then
+        SSH_PORT="$1"
+        shift
+    fi
+    if [[ ! "$SSH_PORT" =~ ^[0-9]+$ ]] || ((SSH_PORT < 1 || SSH_PORT > 65535)); then
         error "Invalid SSH port: '$SSH_PORT'. Must be a number between 1 and 65535."
     fi
 
@@ -91,22 +100,36 @@ parse_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --tailscale) INSTALL_TAILSCALE=true ;;
-            --ts-authkey)
-                if [[ -z "${2:-}" || "$2" == --* ]]; then
-                    error "--ts-authkey requires a value"
-                fi
-                TS_AUTHKEY="$2"
-                shift
-                ;;
             --ts-ssh) TS_SSH=true ;;
-            --help | -h)
-                usage
-                exit 0
-                ;;
-            *) warn "Unknown option: $1" ;;
+            *) error "Unknown option: '$1' (see --help)" ;;
         esac
         shift
     done
+
+    if [[ "$TS_SSH" == true && "$INSTALL_TAILSCALE" != true ]]; then
+        error "--ts-ssh requires --tailscale"
+    fi
+}
+
+# Ask for the Tailscale auth key up front (hidden input) so it never appears
+# in shell history or `ps` output. A blank answer means "I'll run tailscale up
+# by hand later".
+prompt_ts_authkey() {
+    [[ "$INSTALL_TAILSCALE" == true ]] || return 0
+
+    if [[ ! -r /dev/tty ]]; then
+        warn "No TTY available — skipping Tailscale auth key prompt."
+        return 0
+    fi
+
+    local key=""
+    read -rsp "Tailscale auth key (leave blank to authenticate manually later): " \
+        key </dev/tty || true
+    echo >/dev/tty
+    if [[ -n "$key" && ! "$key" =~ ^tskey- ]]; then
+        error "That doesn't look like a Tailscale auth key (expected 'tskey-...')."
+    fi
+    TS_AUTHKEY="$key"
 }
 
 print_plan() {
@@ -115,7 +138,6 @@ print_plan() {
     info "SSH will be configured on port: $SSH_PORT"
     if [[ "$INSTALL_TAILSCALE" == true ]]; then
         info "Tailscale: ENABLED"
-        [[ -n "$TS_AUTHKEY" ]] && info "  → Unattended auth key provided"
         [[ "$TS_SSH" == true ]] && info "  → Tailscale SSH enabled (SSH port closed to public)"
     else
         info "Tailscale: not requested (pass --tailscale to enable)"
@@ -267,7 +289,7 @@ setup_user_ssh_keys() {
         if [[ "$TS_SSH" == false ]]; then
             error "No keys found in $root_authorized_keys and --ts-ssh was not requested." \
                 "configure_sshd will disable password auth, guaranteeing a lockout." \
-                "Add your public key to /root/.ssh/authorized_keys and re-run, or pass --ts-ssh."
+                "Add your public key to /root/.ssh/authorized_keys and re-run, or pass --tailscale --ts-ssh."
         fi
         warn "No keys found in $root_authorized_keys — authorized_keys created empty"
         warn "--ts-ssh is enabled; you can still reach the server over the tailnet."
@@ -664,16 +686,28 @@ install_tailscale() {
         success "Tailscale pinned — excluded from automatic upgrades"
     fi
 
-    # Build tailscale up arguments as an array, not a string — see #6 in
-    # AGENTS.md for the rationale.
-    local ts_up_args=()
-    [[ -n "$TS_AUTHKEY" ]] && ts_up_args+=("--authkey=$TS_AUTHKEY")
-    [[ "$TS_SSH" == true ]] && ts_up_args+=("--ssh")
-
     # Bring Tailscale up
     if [[ -n "$TS_AUTHKEY" ]]; then
-        tailscale up "${ts_up_args[@]}"
-        success "Tailscale connected (unattended)"
+        # Hand the key over via a root-only file (tailscale's 'file:' prefix)
+        # rather than argv, so it never shows up in `ps`.
+        local key_file
+        key_file=$(mktemp)
+        chmod 600 "$key_file"
+        printf '%s' "$TS_AUTHKEY" >"$key_file"
+
+        # Build tailscale up arguments as an array, not a string — see
+        # "Arrays for flag lists" in AGENTS.md.
+        local ts_up_args=("--auth-key=file:$key_file")
+        [[ "$TS_SSH" == true ]] && ts_up_args+=("--ssh")
+
+        if ! tailscale up "${ts_up_args[@]}"; then
+            rm -f "$key_file"
+            error "tailscale up failed"
+        fi
+        rm -f "$key_file"
+        TS_AUTHKEY=""
+        TS_CONNECTED=true
+        success "Tailscale connected"
 
         # If Tailscale SSH is enabled: close the public SSH port,
         # trust the tailscale0 interface instead.
@@ -753,7 +787,7 @@ print_summary() {
     warn "5. Only user '$USERNAME' can SSH to this server"
     warn "6. Automatic security updates are ENABLED"
     warn "7. sudo commands are fully logged to /var/log/sudo.log"
-    if [[ "$INSTALL_TAILSCALE" == true && "$TS_SSH" == true && -n "$TS_AUTHKEY" ]]; then
+    if [[ "$INSTALL_TAILSCALE" == true && "$TS_SSH" == true && "$TS_CONNECTED" == true ]]; then
         warn "8. Public SSH port is CLOSED — connect via: ssh $USERNAME@<tailscale-hostname>"
         warn "   Tailscale must be authenticated on your client device"
     fi
@@ -806,11 +840,12 @@ print_summary() {
 main() {
     export DEBIAN_FRONTEND=noninteractive
 
+    parse_args "$@"
     require_root
     require_ubuntu 24.04
 
-    parse_args "$@"
     print_plan
+    prompt_ts_authkey
 
     update_system
     install_security_packages

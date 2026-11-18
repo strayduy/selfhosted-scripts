@@ -35,10 +35,11 @@ selfhosted-scripts/
    apt-get update && apt-get install -y git
    git clone https://github.com/strayduy/selfhosted-scripts.git
    cd selfhosted-scripts
-   ./server/bootstrap_server.sh <username> 2222 --tailscale --ts-authkey tskey-auth-...
+   ./server/bootstrap_server.sh <username> 2222 --tailscale
    ```
    This creates the admin user, hardens SSH, enables UFW/fail2ban/unattended-upgrades,
-   and optionally joins the machine to Tailscale.
+   and optionally joins the machine to Tailscale. With `--tailscale` you'll be
+   prompted (input hidden) for an auth key, so it never lands in shell history.
 3. **Reconnect** as the new user on the new SSH port.
 4. **(Per-app)** Create a dedicated service account for rootless containers, e.g.:
    ```bash
@@ -57,7 +58,7 @@ One-shot droplet hardening. Run **once**, as `root`, immediately after the
 droplet boots for the first time.
 
 ```
-Usage: bootstrap_server.sh <username> [ssh_port] [--tailscale] [--ts-authkey <key>] [--ts-ssh]
+Usage: bootstrap_server.sh <username> [ssh_port] [--tailscale] [--ts-ssh]
 ```
 
 What it configures:
