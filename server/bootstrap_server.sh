@@ -444,17 +444,28 @@ verify_sshd_effective_config() {
 write_sysctl_hardening() {
     cat >/etc/sysctl.d/99-hardening.conf <<'EOF'
 # Kernel / network security and VM tuning (managed by bootstrap_server.sh)
-# Network hardening
-net.ipv4.conf.default.rp_filter=1
+#
+# Per-interface settings are set for both 'all' and 'default': 'all' doesn't
+# reach interfaces created later (tailscale0, podman bridges), 'default' does.
+#
+# rp_filter=1 (strict) is fine for a plain tailnet member. If this droplet
+# ever becomes a Tailscale exit node or subnet router, switch both to 2
+# (loose) — strict mode drops forwarded traffic and tailscale warns about it.
 net.ipv4.conf.all.rp_filter=1
+net.ipv4.conf.default.rp_filter=1
 net.ipv4.tcp_syncookies=1
 net.ipv4.conf.all.accept_redirects=0
+net.ipv4.conf.default.accept_redirects=0
 net.ipv4.conf.all.send_redirects=0
+net.ipv4.conf.default.send_redirects=0
 net.ipv4.conf.all.accept_source_route=0
+net.ipv4.conf.default.accept_source_route=0
 net.ipv4.conf.all.log_martians=1
+net.ipv4.conf.default.log_martians=1
 net.ipv4.icmp_echo_ignore_broadcasts=1
 net.ipv4.icmp_ignore_bogus_error_responses=1
 net.ipv6.conf.all.accept_redirects=0
+net.ipv6.conf.default.accept_redirects=0
 kernel.dmesg_restrict=1
 kernel.kptr_restrict=2
 # VM / swap tuning — always set; harmless if no swap is present
@@ -532,35 +543,22 @@ configure_ufw() {
 
 configure_fail2ban() {
     info "Step 11: Configuring Fail2Ban..."
+    # backend=systemd reads sshd's journal directly, so no logpath is needed.
+    # No mail actions: there's no MTA on the droplet.
+    # ignoreip includes Tailscale's CGNAT range so a fumbled login from your
+    # own tailnet device can't ban it.
     cat >/etc/fail2ban/jail.local <<EOF
+# Managed by bootstrap_server.sh
 [DEFAULT]
 bantime = 12h
 findtime = 10m
 maxretry = 3
 backend = systemd
-destemail = root@localhost
-sendername = Fail2Ban
-mta = sendmail
+ignoreip = 127.0.0.1/8 ::1 100.64.0.0/10
 
 [sshd]
 enabled = true
 port = $SSH_PORT
-filter = sshd
-logpath = /var/log/auth.log
-maxretry = 3
-bantime = 12h
-
-[apache-auth]
-enabled = false
-
-[apache-badbots]
-enabled = false
-
-[apache-noscript]
-enabled = false
-
-[apache-overflows]
-enabled = false
 EOF
 
     systemctl enable fail2ban
