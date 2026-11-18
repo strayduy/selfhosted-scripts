@@ -236,12 +236,16 @@ install_security_packages() {
     info "Step 2: Installing essential security packages..."
     # nftables (fail2ban's Debian banaction) and cron (unattended-upgrades)
     # are Recommends but already present in the Ubuntu 24.04 server image.
+    # cracklib-runtime is only a Recommends of libcrack2, but pwquality's
+    # dictionary check needs the dictionary it builds; without it, and with
+    # enforce_for_root, every password is rejected ("error loading dictionary").
     apt-get install "${APT_OPTS[@]}" --no-install-recommends \
         fail2ban \
         ufw \
         unattended-upgrades \
         apt-listchanges \
         libpam-pwquality \
+        cracklib-runtime \
         chrony \
         lynis \
         apparmor-utils
@@ -287,6 +291,23 @@ create_user() {
         adduser --comment "" "$USERNAME"
         success "User '$USERNAME' created successfully"
     fi
+    ensure_user_password
+}
+
+# adduser still creates the account if every password attempt is rejected,
+# leaving it locked. SSH is key-only, but sudo needs a password, and root login
+# is disabled — so a passwordless admin would have no way to escalate. Keep
+# prompting until a password is set (Ctrl-C to abort).
+ensure_user_password() {
+    local status
+    status=$(passwd -S "$USERNAME" | awk '{print $2}')
+    [[ "$status" == "P" ]] && return 0
+
+    warn "User '$USERNAME' has no usable password (needed for sudo) — set one now."
+    until passwd "$USERNAME"; do
+        warn "Password not set; try again (Ctrl-C to abort)."
+    done
+    success "Password set for '$USERNAME'"
 }
 
 # ── Step 5: Grant admin privileges ────────────────────────────────────────────
