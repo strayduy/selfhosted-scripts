@@ -10,7 +10,11 @@ scripts will refuse to run on other versions.
 selfhosted-scripts/
 ├── server/
 │   ├── bootstrap_server.sh        # Initial droplet hardening (users, SSH, UFW, fail2ban, ...)
+│   ├── finalize_tailscale.sh      # Join/rejoin the tailnet (no-key bootstrap, snapshot copies)
 │   └── setup_rootless_podman.sh   # Create a rootless-Podman service account
+├── lib/
+│   ├── common.sh                  # Logging + preflight helpers
+│   └── tailscale.sh               # Tailscale helpers shared by the server/ scripts
 ├── vaultwarden/
 │   └── setup_vaultwarden.sh       # Deploy Vaultwarden behind Tailscale TLS
 ├── client/                        # Tools run from a client laptop, not the droplet
@@ -73,9 +77,33 @@ What it configures:
 - 2 G swap file, `vm.swappiness=10`.
 - chrony, AppArmor enforcement, `noexec,nosuid,nodev` on `/dev/shm`, 5-minute sudo credential cache.
 - Optional Tailscale install (pinned version, hash-verified) + Tailscale SSH.
+- With Tailscale: a cloud-init first-boot hook so droplets created from a
+  snapshot get a fresh Tailscale identity (see `finalize_tailscale.sh`).
+
+Settings from the last run are kept in `/etc/bootstrap_server.conf`.
 
 The script is **partly idempotent** — most steps are safe to re-run, but it's
 intended as a one-shot.
+
+### `server/finalize_tailscale.sh`
+
+Joins (or rejoins) the tailnet after `bootstrap_server.sh --tailscale`. Prompts
+for an auth key (hidden; leave blank to log in via URL), runs `tailscale up`
+(with `--ssh` if bootstrap used `--ts-ssh`), and — after confirmation — closes
+the public SSH port when Tailscale SSH is enabled.
+
+Run it when:
+
+- bootstrap ran without an auth key, or
+- on a droplet created from a snapshot. A snapshot carries the original
+  node's Tailscale identity, so copies would fight over it. A cloud-init
+  per-instance hook wipes `tailscaled.state` on the copy's first boot,
+  temporarily reopens the public SSH port if Tailscale SSH had closed it,
+  and shows a login message until this script has run.
+
+```
+Usage: sudo ./server/finalize_tailscale.sh
+```
 
 ### `server/setup_rootless_podman.sh`
 

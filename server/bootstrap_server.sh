@@ -25,6 +25,8 @@ IFS=$'\n\t'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$SCRIPT_DIR/../lib/common.sh"
+# shellcheck source=../lib/tailscale.sh
+. "$SCRIPT_DIR/../lib/tailscale.sh"
 
 trap 'error "Failed at line $LINENO (command: $BASH_COMMAND)"' ERR
 
@@ -135,24 +137,11 @@ parse_args() {
 }
 
 # Ask for the Tailscale auth key up front (hidden input) so it never appears
-# in shell history or `ps` output. A blank answer means "I'll run tailscale up
-# by hand later".
-prompt_ts_authkey() {
+# in shell history or `ps` output, and the rest of the run needs no input
+# beyond adduser's password prompt.
+ask_ts_authkey() {
     [[ "$INSTALL_TAILSCALE" == true ]] || return 0
-
-    if [[ ! -r /dev/tty ]]; then
-        warn "No TTY available — skipping Tailscale auth key prompt."
-        return 0
-    fi
-
-    local key=""
-    read -rsp "Tailscale auth key (leave blank to authenticate manually later): " \
-        key </dev/tty || true
-    echo >/dev/tty
-    if [[ -n "$key" && ! "$key" =~ ^tskey- ]]; then
-        error "That doesn't look like a Tailscale auth key (expected 'tskey-...')."
-    fi
-    TS_AUTHKEY="$key"
+    TS_AUTHKEY=$(prompt_ts_authkey)
 }
 
 print_plan() {
@@ -778,60 +767,26 @@ install_tailscale() {
     # No unattended-upgrades blacklist needed: the pinned .deb comes from no
     # apt source, so apt has nothing to upgrade it to. Update the pin above.
 
+    systemctl enable --now tailscaled
+    install_ts_firstboot_hook
+    info "Installed first-boot hook: snapshot copies get a fresh Tailscale identity"
+
     # Bring Tailscale up
     if [[ -n "$TS_AUTHKEY" ]]; then
-        # Hand the key over via a root-only file (tailscale's 'file:' prefix)
-        # rather than argv, so it never shows up in `ps`.
-        local key_file
-        key_file=$(mktemp)
-        chmod 600 "$key_file"
-        printf '%s' "$TS_AUTHKEY" >"$key_file"
-
-        # Build tailscale up arguments as an array, not a string — see
-        # "Arrays for flag lists" in AGENTS.md.
-        local ts_up_args=("--auth-key=file:$key_file")
-        [[ "$TS_SSH" == true ]] && ts_up_args+=("--ssh")
-
-        if ! tailscale up "${ts_up_args[@]}"; then
-            rm -f "$key_file"
-            error "tailscale up failed"
-        fi
-        rm -f "$key_file"
+        ts_up "$TS_AUTHKEY" "$TS_SSH" || error "tailscale up failed"
         TS_AUTHKEY=""
         TS_CONNECTED=true
         success "Tailscale connected"
 
-        # If Tailscale SSH is enabled: close the public SSH port,
-        # trust the tailscale0 interface instead.
-        # SSH over the tailnet is handled entirely by Tailscale's daemon.
         if [[ "$TS_SSH" == true ]]; then
             info "Locking down public SSH port — access via Tailscale SSH only..."
-            ufw delete allow "$SSH_PORT"/tcp 2>/dev/null || true
-            ufw allow in on tailscale0
-            ufw reload
-            success "Public SSH port $SSH_PORT closed; tailscale0 interface trusted"
-            warn "Connect with: ssh $USERNAME@<tailscale-hostname-or-ip>"
-            warn "Tailscale must be running on your client device"
+            ts_close_public_ssh "$SSH_PORT"
         fi
     else
-        # Start the daemon but defer auth — operator must run 'tailscale up' manually
-        systemctl enable --now tailscaled
-        warn "Tailscale daemon started but NOT authenticated."
-        warn "Run the following to complete setup:"
-        echo ""
+        serious_warn "Tailscale is installed but NOT authenticated. Finish with:" \
+            "sudo $SCRIPT_DIR/finalize_tailscale.sh"
         if [[ "$TS_SSH" == true ]]; then
-            echo "  tailscale up --ssh"
-        else
-            echo "  tailscale up"
-        fi
-        echo ""
-        warn "Do NOT close this SSH session until Tailscale is authenticated"
-        warn "and you have verified connectivity over the tailnet."
-        if [[ "$TS_SSH" == true ]]; then
-            warn "After verifying tailnet access, manually run:"
-            echo "  ufw delete allow $SSH_PORT/tcp"
-            echo "  ufw allow in on tailscale0"
-            echo "  ufw reload"
+            warn "That script also closes public SSH port $SSH_PORT once the tailnet works."
         fi
     fi
 
@@ -936,7 +891,7 @@ main() {
 
     load_state
     print_plan
-    prompt_ts_authkey
+    ask_ts_authkey
 
     update_system
     install_security_packages
