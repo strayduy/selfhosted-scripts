@@ -485,7 +485,7 @@ cmd_update() {
     echo ""
     [[ -z "$backup_file" ]] || info "Pre-update backup: $backup_file"
     info "Old images are kept for rollback. Remove them once you're happy:"
-    info "  sudo -u $VW_SYSTEM_USER podman image prune -f"
+    info "  cd / && sudo -u $VW_SYSTEM_USER podman image prune -f"
     info "To roll back manually:"
     info "  sudo $0 update $current_image"
     echo ""

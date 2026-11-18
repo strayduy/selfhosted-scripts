@@ -91,12 +91,19 @@ require_ubuntu() {
 run_as_user() {
     local user="$1"
     shift
-    local uid
+    local uid home
     uid=$(id -u "$user")
-    sudo -u "$user" \
-        XDG_RUNTIME_DIR="/run/user/${uid}" \
-        DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/${uid}/bus" \
-        "$@"
+    home=$(getent passwd "$user" | cut -d: -f6)
+    # Run from <user>'s home, not the caller's cwd: sudo keeps the cwd, and if
+    # <user> can't enter it (e.g. a repo under a 0750 /home/<admin>), rootless
+    # podman aborts with "cannot chdir to ...: Permission denied".
+    (
+        cd "$home" 2>/dev/null || cd /
+        sudo -u "$user" \
+            XDG_RUNTIME_DIR="/run/user/${uid}" \
+            DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/${uid}/bus" \
+            "$@"
+    )
 }
 
 # Run `systemctl --user <args>` as <user>.

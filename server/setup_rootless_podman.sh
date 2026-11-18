@@ -471,7 +471,7 @@ smoke_test() {
         warn "Smoke test FAILED. Podman does not appear to be working."
         warn "========================================================"
         warn "Debug manually with:"
-        warn "  sudo -u $PODMAN_USER XDG_RUNTIME_DIR=/run/user/${PODMAN_UID} podman info"
+        warn "  cd / && sudo -u $PODMAN_USER XDG_RUNTIME_DIR=/run/user/${PODMAN_UID} podman info"
         warn ""
         warn "Common causes on DigitalOcean droplets:"
         warn "  - kernel.unprivileged_userns_clone=0  (check: sysctl kernel.unprivileged_userns_clone)"
@@ -582,7 +582,8 @@ main() {
     info "  machinectl shell ${PODMAN_USER}@"
     info ""
     info "Or run a one-off command as '$PODMAN_USER' without a full login session:"
-    info "  sudo -u $PODMAN_USER XDG_RUNTIME_DIR=/run/user/${PODMAN_UID} podman <command>"
+    info "  cd / && sudo -u $PODMAN_USER XDG_RUNTIME_DIR=/run/user/${PODMAN_UID} podman <command>"
+    info "  (cd first: podman aborts if '$PODMAN_USER' can't enter the current directory)"
 }
 
 main "$@"
