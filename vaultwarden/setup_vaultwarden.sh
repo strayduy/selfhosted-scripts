@@ -775,7 +775,9 @@ Volume=$VW_DATA_DIR:/data:Z
 # Bind only to the Tailscale interface — not reachable on the public IP.
 PublishPort=$ts_ip:$port:$port
 # Defense-in-depth resource limits in case of container escape or runaway process.
-Memory=512M
+# Memory goes through PodmanArgs: Quadlet only gained a Memory= key in Podman
+# 5.5, and 24.04's 4.9 generator rejects unknown keys, producing no unit at all.
+PodmanArgs=--memory=512m
 PidsLimit=512
 
 [Service]
@@ -802,6 +804,15 @@ EOF
     info "Step 8: Activating Quadlet unit..."
 
     systemctl_user "$VW_SYSTEM_USER" daemon-reload
+    # If the generator rejected the .container file (e.g. a key this Podman
+    # version doesn't know), there is simply no unit and `start` only says
+    # "Unit vaultwarden.service not found". Show the generator's reason instead.
+    if [[ "$(systemctl_user "$VW_SYSTEM_USER" show -p LoadState --value vaultwarden.service)" != "loaded" ]]; then
+        warn "Quadlet did not generate vaultwarden.service. Generator output:"
+        run_as_user "$VW_SYSTEM_USER" /usr/lib/systemd/user-generators/podman-user-generator \
+            --dryrun >/dev/null || true
+        error "Fix $VW_QUADLET_FILE, then daemon-reload and start vaultwarden."
+    fi
     # Quadlet-generated units cannot be `enable`d (they're transient — they
     # are regenerated on every daemon-reload), but `WantedBy=default.target`
     # in the .container file makes them start automatically with the user
