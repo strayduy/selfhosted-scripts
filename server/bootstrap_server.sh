@@ -273,10 +273,10 @@ EOF
     success "Password policies configured"
 }
 
-# ── Step 3: Create new user ───────────────────────────────────────────────────
+# ── Step 4: Create new user ───────────────────────────────────────────────────
 
 create_user() {
-    info "Step 3: Creating new user '$USERNAME'..."
+    info "Step 4: Creating new user '$USERNAME'..."
     if id "$USERNAME" &>/dev/null; then
         warn "User '$USERNAME' already exists, skipping user creation"
     else
@@ -285,10 +285,10 @@ create_user() {
     fi
 }
 
-# ── Step 4: Grant admin privileges ────────────────────────────────────────────
+# ── Step 5: Grant admin privileges ────────────────────────────────────────────
 
 grant_admin_privileges() {
-    info "Step 4: Granting admin privileges to '$USERNAME'..."
+    info "Step 5: Granting admin privileges to '$USERNAME'..."
     usermod -aG sudo "$USERNAME"
     success "Admin privileges granted to '$USERNAME'"
 }
@@ -656,10 +656,10 @@ disable_unused_services() {
     success "Unused services disabled"
 }
 
-# ── Step 17: Configure AppArmor ───────────────────────────────────────────────
+# ── Step 16: Configure AppArmor ───────────────────────────────────────────────
 
 configure_apparmor() {
-    info "Step 17: Configuring AppArmor..."
+    info "Step 16: Configuring AppArmor..."
     systemctl enable apparmor
     systemctl start apparmor
     # aa-enforce on the glob would also recurse into subdirectories like abstractions/,
@@ -669,10 +669,10 @@ configure_apparmor() {
     success "AppArmor configured and enforcing"
 }
 
-# ── Step 18: Configure sudo hardening ─────────────────────────────────────────
+# ── Step 17: Configure sudo hardening ─────────────────────────────────────────
 
 harden_sudo() {
-    info "Step 18: Configuring sudo hardening..."
+    info "Step 17: Configuring sudo hardening..."
     # Only the cached-credential timeout differs from Ubuntu's defaults
     # (env_reset and secure_path are already set in /etc/sudoers).
     # Deliberately not set:
@@ -689,10 +689,10 @@ EOF
     success "Sudo hardening configured"
 }
 
-# ── Step 19: Restart services to apply changes ────────────────────────────────
+# ── Step 18: Restart services to apply changes ────────────────────────────────
 
 restart_services() {
-    info "Step 19: Restarting services..."
+    info "Step 18: Restarting services..."
     restart_sshd
     systemctl restart chrony
     systemctl restart fail2ban
@@ -717,10 +717,10 @@ restart_sshd() {
     fi
 }
 
-# ── Step 20: Install and configure Tailscale (optional) ───────────────────────
+# ── Step 19: Install and configure Tailscale (optional) ───────────────────────
 
 install_tailscale() {
-    info "Step 20: Installing and configuring Tailscale..."
+    info "Step 19: Installing and configuring Tailscale..."
 
     # Install Tailscale — pinned to a specific version with a hardcoded checksum.
     # Pinning prevents silent supply-chain updates; you control when to upgrade.
@@ -793,7 +793,7 @@ install_tailscale() {
     success "Tailscale configuration complete"
 }
 
-# ── Step 21: Display security status ──────────────────────────────────────────
+# ── Step 20: Display security status ──────────────────────────────────────────
 
 show_security_status() {
     info "=== SECURITY STATUS ==="
@@ -821,34 +821,41 @@ show_security_status() {
     chronyc sources || warn "chronyc sources failed (chrony may still be starting up)"
 }
 
-# ── Step 22: Final summary ────────────────────────────────────────────────────
+# ── Step 21: Final summary ────────────────────────────────────────────────────
 
 print_summary() {
-    success "Server bootstrapping completed successfully!"
+    success "Server bootstrapping completed!"
     echo ""
-    warn "=== CRITICAL REMINDERS ==="
-    warn "1. SSH is now on port $SSH_PORT - connect with: ssh -p $SSH_PORT $USERNAME@your_server_ip"
-    warn "2. Test SSH connection with new user and port BEFORE closing this session"
-    warn "3. Password authentication is DISABLED"
-    warn "4. Root login is DISABLED"
-    warn "5. Only user '$USERNAME' can SSH to this server"
-    warn "6. Automatic security updates are ENABLED (auto-reboot at 11:00 UTC when needed)"
-    warn "7. sudo commands are logged by journald (journalctl _COMM=sudo) and /var/log/auth.log"
-    if [[ "$INSTALL_TAILSCALE" == true && "$TS_SSH" == true && "$TS_CONNECTED" == true ]]; then
-        warn "8. Public SSH port is CLOSED — connect via: ssh $USERNAME@<tailscale-hostname>"
-        warn "   Tailscale must be authenticated on your client device"
+
+    local n=0
+    reminder() {
+        n=$((n + 1))
+        warn "$n. $1"
+        shift
+        local line
+        for line in "$@"; do warn "   $line"; done
+    }
+
+    warn "=== REMINDERS ==="
+    if [[ "$TS_SSH" == true && "$TS_CONNECTED" == true ]]; then
+        reminder "After the reboot, connect over the tailnet: ssh $USERNAME@<tailscale-hostname>" \
+            "The public SSH port is CLOSED; Tailscale must be running on your client."
+    else
+        reminder "After the reboot, connect with: ssh -p $SSH_PORT $USERNAME@<server-ip>"
     fi
-    if [[ "$INSTALL_TAILSCALE" == true && "$TS_SSH" == true ]]; then
-        warn "9. Tailscale SSH bypasses sshd entirely — PermitRootLogin has no effect over the tailnet."
-        warn "   Restrict root login via your Tailscale ACL policy:"
-        warn "   https://login.tailscale.com/admin/acls"
-        warn "   Ensure your SSH ACL rule specifies users: [\"$USERNAME\"] and omits root."
+    reminder "Password authentication and root login are DISABLED; only '$USERNAME' can SSH in."
+    reminder "Security updates install automatically and reboot at 11:00 UTC when needed."
+    reminder "sudo is logged by journald (journalctl _COMM=sudo) and /var/log/auth.log."
+    if [[ "$TS_SSH" == true ]]; then
+        reminder "Tailscale SSH bypasses sshd — PermitRootLogin has no effect over the tailnet." \
+            "Restrict it in your ACL policy (https://login.tailscale.com/admin/acls):" \
+            "the SSH rule should specify users: [\"$USERNAME\"] and omit root."
     fi
     echo ""
     warn "=== SECURITY FEATURES ENABLED ==="
     info "✓ UFW Firewall (SSH only: $SSH_PORT — add web ports manually if needed)"
     info "✓ Fail2Ban (12h SSH bans)"
-    info "✓ Automatic security updates"
+    info "✓ Automatic security updates (with reboot when required)"
     info "✓ Kernel security hardening"
     info "✓ Strong password policies (pam_pwquality)"
     info "✓ SSH hardened (key-only, no root, OpenSSH default crypto)"
@@ -857,26 +864,57 @@ print_summary() {
     info "✓ Sudo hardening (5-minute credential cache)"
     info "✓ Swap file (${SWAP_SIZE})"
     if [[ "$INSTALL_TAILSCALE" == true ]]; then
-        info "✓ Tailscale VPN installed"
-        [[ "$TS_SSH" == true ]] && info "✓ Tailscale SSH enabled (public SSH port closed)"
+        info "✓ Tailscale VPN installed (snapshot copies get a fresh identity)"
+        if [[ "$TS_SSH" == true && "$TS_CONNECTED" == true ]]; then
+            info "✓ Tailscale SSH enabled (public SSH port closed)"
+        fi
     fi
     echo ""
     info "Run 'lynis audit system' for a detailed security assessment"
 
-    # Print a highly-visible reboot warning last so it is not scrolled off.
     if [[ "$REBOOT_REQUIRED" == true ]]; then
         echo ""
-        warn "╔══════════════════════════════════════════════════════════════════════╗"
-        warn "║           *** REBOOT REQUIRED BEFORE FURTHER PROVISIONING ***       ║"
-        warn "║                                                                      ║"
-        warn "║  apt-get upgrade installed a new kernel that is NOT yet running.     ║"
-        warn "║  Some hardening parameters written above apply only to the new       ║"
-        warn "║  kernel.  Until you reboot, the system is running an older kernel    ║"
-        warn "║  that may be missing security patches.                               ║"
-        warn "║                                                                      ║"
-        warn "║  Reboot now:   systemctl reboot                                      ║"
-        warn "║  Then re-run any app-setup scripts (setup_vaultwarden.sh, etc.).     ║"
-        warn "╚══════════════════════════════════════════════════════════════════════╝"
+        warn "apt-get upgrade installed a new kernel that is NOT running yet —"
+        warn "the system has pending security patches until you reboot."
+    fi
+
+    # Repeat anything that needs attention last, so it isn't scrolled off.
+    if ((${#SERIOUS_WARNINGS[@]} > 0)); then
+        echo ""
+        warn "=== NEEDS ATTENTION BEFORE REBOOTING ==="
+        local msg
+        for msg in "${SERIOUS_WARNINGS[@]}"; do
+            warn "• $msg"
+        done
+    fi
+}
+
+# ── Step 22: Reboot ───────────────────────────────────────────────────────────
+# Several changes (sshd port on first boot, /dev/shm options, a new kernel)
+# are only fully in effect after a reboot, so always offer one. Defaults to
+# yes on a clean run, no if anything above needs attention.
+
+offer_reboot() {
+    echo ""
+    if ! have_tty; then
+        info "Next step: reboot with 'systemctl reboot'."
+        return 0
+    fi
+
+    local prompt="[Y/n]" default="y" answer=""
+    if ((${#SERIOUS_WARNINGS[@]} > 0)); then
+        prompt="[y/N]"
+        default="n"
+        warn "Defaulting to NO because of the warnings above."
+    fi
+
+    read -rp "Reboot now to apply all changes? $prompt " answer </dev/tty || true
+    answer="${answer:-$default}"
+    if [[ "$answer" =~ ^[Yy] ]]; then
+        info "Rebooting..."
+        systemctl reboot
+    else
+        info "Not rebooting. Run 'systemctl reboot' when you're ready."
     fi
 }
 
@@ -919,6 +957,7 @@ main() {
 
     show_security_status
     print_summary
+    offer_reboot
 }
 
 main "$@"

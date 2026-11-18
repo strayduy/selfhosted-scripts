@@ -98,6 +98,7 @@ main() {
         warn "Closing public SSH port $SSH_PORT. Make sure you can reach this host over the"
         warn "tailnet first (e.g. 'ssh <user>@$(tailscale ip -4)' from another device)."
         local answer=""
+        have_tty || error "No TTY to confirm closing port $SSH_PORT; re-run interactively."
         read -rp "Close public SSH port $SSH_PORT now? [y/N] " answer </dev/tty || true
         if [[ "$answer" =~ ^[Yy]$ ]]; then
             ts_close_public_ssh "$SSH_PORT"

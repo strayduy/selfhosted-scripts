@@ -14,7 +14,7 @@ TS_MOTD_SCRIPT="/etc/update-motd.d/99-bootstrap-tailscale"
 # Prompts go to /dev/tty so callers can use `key=$(prompt_ts_authkey)`.
 # Prints nothing (and returns 0) if left blank or no TTY is available.
 prompt_ts_authkey() {
-    if [[ ! -r /dev/tty ]]; then
+    if ! have_tty; then
         warn "No TTY available — skipping Tailscale auth key prompt."
         return 0
     fi

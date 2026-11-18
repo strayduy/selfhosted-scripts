@@ -50,6 +50,15 @@ error() {
 # Section banner — used to delimit major phases of a script.
 section() { echo -e "\n${_C_CYAN}━━━  $*  ━━━${_C_NC}"; }
 
+# ── Terminal ──────────────────────────────────────────────────────────────────
+
+# True if an interactive terminal can be opened for prompts. `[[ -r /dev/tty ]]`
+# isn't enough: the node exists even without a controlling terminal, and only
+# opening it fails.
+have_tty() {
+    { : </dev/tty; } 2>/dev/null
+}
+
 # ── Preflight ─────────────────────────────────────────────────────────────────
 
 # Abort unless running as root (EUID 0).
