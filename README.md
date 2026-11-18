@@ -75,7 +75,7 @@ What it configures:
 - pam_pwquality password policy (enforced before the admin password is set).
 - Kernel hardening via `/etc/sysctl.d/99-hardening.conf`.
 - 2 G swap file, `vm.swappiness=10`.
-- chrony, AppArmor enforcement, `noexec,nosuid,nodev` on `/dev/shm`, 5-minute sudo credential cache.
+- chrony, AppArmor (stock profiles), `noexec,nosuid,nodev` on `/dev/shm`, 5-minute sudo credential cache.
 - Optional Tailscale install (pinned version, hash-verified) + Tailscale SSH.
 - With Tailscale: a cloud-init first-boot hook so droplets created from a
   snapshot get a fresh Tailscale identity (see `finalize_tailscale.sh`).
@@ -115,8 +115,7 @@ Usage: sudo ./setup_rootless_podman.sh [username]    # default: podman
 ```
 
 Handles all the Ubuntu-24.04-specific footguns: subuid/subgid allocation,
-cgroup delegation via `user@.service`, the AppArmor profile patch for
-`podman`/`crun`/`slirp4netns`, `net.ipv4.ip_unprivileged_port_start=443` so
+cgroup delegation via `user@.service`, `net.ipv4.ip_unprivileged_port_start=443` so
 containers can bind to 443 without root, the network-backend pinning for
 Podman v5+, and a smoke test.
 

@@ -660,13 +660,17 @@ disable_unused_services() {
 
 configure_apparmor() {
     info "Step 16: Configuring AppArmor..."
+    # AppArmor is enabled and enforcing by default on Ubuntu; just make sure.
+    #
+    # Do NOT run aa-enforce over /etc/apparmor.d. Many stock 24.04 profiles
+    # (podman, crun, slirp4netns, buildah, browsers, ...) are deliberately
+    # flags=(unconfined) with a single 'userns,' rule: they exist only to
+    # grant user-namespace creation, which 24.04 otherwise restricts.
+    # aa-enforce strips 'unconfined', turning them into enforcing profiles
+    # that break rootless Podman, and leaves them as modified conffiles.
     systemctl enable apparmor
     systemctl start apparmor
-    # aa-enforce on the glob would also recurse into subdirectories like abstractions/,
-    # generating errors for each. Target only top-level files instead.
-    find /etc/apparmor.d -maxdepth 1 -type f -exec aa-enforce {} \; 2>/dev/null \
-        || warn "Some AppArmor profiles could not be enforced — review 'aa-status' after provisioning"
-    success "AppArmor configured and enforcing"
+    success "AppArmor enabled (stock profiles)"
 }
 
 # ── Step 17: Configure sudo hardening ─────────────────────────────────────────
@@ -859,7 +863,7 @@ print_summary() {
     info "✓ Kernel security hardening"
     info "✓ Strong password policies (pam_pwquality)"
     info "✓ SSH hardened (key-only, no root, OpenSSH default crypto)"
-    info "✓ AppArmor enforcement"
+    info "✓ AppArmor (stock profiles)"
     info "✓ Time synchronization"
     info "✓ Sudo hardening (5-minute credential cache)"
     info "✓ Swap file (${SWAP_SIZE})"

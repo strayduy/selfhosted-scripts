@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # setup_rootless_podman.sh
-# Sets up a rootless Podman user with AppArmor configuration on Ubuntu 24.04
+# Sets up a rootless Podman user on Ubuntu 24.04
 # Usage: sudo ./setup_rootless_podman.sh [username]
 # Default username: podman
 
@@ -77,17 +77,10 @@ install_dependencies() {
 
     # crun is the default OCI runtime for Podman on Ubuntu 24.04. It must be
     # installed explicitly on minimal droplet images — omitting it causes Podman
-    # to silently fall back to runc and leaves the crun AppArmor patch with
-    # nothing to reload against.
+    # to silently fall back to runc.
     #
-    # Both passt and slirp4netns are installed here regardless of Podman version.
-    # We cannot safely call `podman --version` at this point because AppArmor has
-    # not yet been configured — on Ubuntu 24.04 the podman AppArmor profile is
-    # strict enough to deny loading libsubid.so.4, causing `podman` to abort with
-    # a "Permission denied" shared-library error before printing any output.
-    # The correct backend is selected and written to containers.conf in
-    # setup_network_backend(), which runs after setup_apparmor().
-    # Both packages are small and having both present is harmless.
+    # Both passt and slirp4netns are installed regardless of Podman version;
+    # setup_network_backend() picks the right one. Both are small.
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends uidmap podman fuse-overlayfs crun passt slirp4netns
 
     # Verify that newuidmap/newgidmap are SUID root after install.
@@ -253,7 +246,7 @@ EOF
     fi
 }
 
-# ── Step 5: Enable linger ──────────────────────────────────────────────────────
+# ── Step 5: Enable linger ─────────────────────────────────────────────────────
 #
 # Normally, a user's systemd session (and all its processes) is torn down the
 # moment the user logs out. 'Linger' tells systemd to keep the user's session
@@ -406,153 +399,7 @@ EOF
     success "Registries config written to '$REGISTRIES_FILE'."
 }
 
-# ── Step 9: Configure AppArmor ────────────────────────────────────────────────
-#
-# Ubuntu 24.04 ships AppArmor profiles for podman, crun, and slirp4netns that
-# are strict enough to break rootless operation. We want to run each binary
-# with flags=(unconfined), which keeps AppArmor tracking the process but stops
-# it from actually blocking any operations.
-#
-# The naive fix — sed-patching the files in /etc/apparmor.d/ — is silently
-# undone whenever unattended-upgrades reinstalls the package: the package
-# postinst overwrites the profile and calls apparmor_parser to reload it,
-# restoring the stock (restricting) configuration.
-#
-# Robust fix (this implementation):
-#   1. Write a complete flags=(unconfined) profile to /etc/apparmor.d/local/.
-#      Files in that directory are never owned by any package, so they survive
-#      upgrades intact.
-#   2. Disable the package-managed profile via a symlink in
-#      /etc/apparmor.d/disable/ so AppArmor's init does not load the stock
-#      version at boot (which would conflict with ours).
-#   3. Install a systemd one-shot service (rootless-podman-apparmor.service)
-#      that reloads the local overrides on every boot, after apparmor.service
-#      has finished — ensuring our flags=(unconfined) profiles win even when a
-#      package postinst reloads the stock profile mid-session.
-#
-# An alternative hardening approach would be to craft a real permissive
-# profile, but flags=(unconfined) is the pragmatic default used upstream for
-# rootless Podman on Ubuntu.
-
-# Write a flags=(unconfined) profile for <profile_name> to
-# /etc/apparmor.d/local/ and suppress the package-managed version via
-# /etc/apparmor.d/disable/.
-#
-# Usage: setup_apparmor_override <profile-name> <binary-path>
-#   e.g.  setup_apparmor_override "podman" "/usr/bin/podman"
-setup_apparmor_override() {
-    local profile_name="$1"
-    local binary_path="$2"
-    local upstream_profile="/etc/apparmor.d/${profile_name}"
-    local override_file="/etc/apparmor.d/local/${profile_name}"
-    local disable_dir="/etc/apparmor.d/disable"
-    local disable_symlink="${disable_dir}/${profile_name}"
-
-    command -v apparmor_parser &>/dev/null \
-        || error "apparmor_parser not found. Is AppArmor installed? (apt-get install apparmor)"
-
-    mkdir -p /etc/apparmor.d/local "${disable_dir}"
-
-    # Write the override profile unless it already exists and is already
-    # unconfined (idempotent re-runs should be a no-op).
-    if [[ -f "$override_file" ]] && grep -q "flags=(unconfined)" "$override_file"; then
-        warn "AppArmor override already present at '${override_file}', skipping write."
-    else
-        info "Writing AppArmor override: ${override_file}"
-        cat >"$override_file" <<EOF
-# AppArmor unconfined override for rootless Podman.
-# Managed by setup_rootless_podman.sh — do not edit manually.
-#
-# This file lives in /etc/apparmor.d/local/ and is not owned by any package,
-# so it is never silently overwritten by unattended-upgrades.  The stock
-# package profile at ${upstream_profile} is suppressed via a disable symlink
-# at ${disable_symlink} so the two profiles do not conflict.
-#
-# The rootless-podman-apparmor.service systemd unit re-applies this override
-# on every boot, ensuring it takes precedence even after a package postinst
-# reloads the stock AppArmor profile.
-profile ${profile_name} ${binary_path} flags=(unconfined) {
-  # Intentionally empty: flags=(unconfined) grants all permissions without
-  # enforcing any AppArmor restrictions on this binary.  This is the approach
-  # recommended upstream for rootless Podman on Ubuntu.
-}
-EOF
-        success "AppArmor override written to '${override_file}'."
-    fi
-
-    # Suppress the package-managed profile at boot by symlinking it into
-    # /etc/apparmor.d/disable/.  AppArmor's init scripts skip any profile
-    # that has a corresponding symlink in that directory.
-    if [[ -f "$upstream_profile" ]]; then
-        if [[ ! -e "$disable_symlink" ]]; then
-            ln -sf "$upstream_profile" "$disable_symlink"
-            info "Package profile '${upstream_profile}' disabled at boot via '${disable_symlink}'."
-        else
-            info "Package profile '${upstream_profile}' already disabled."
-        fi
-    else
-        warn "Package profile '${upstream_profile}' not found — nothing to disable."
-    fi
-
-    # Load (or replace) our override in the running kernel.  --replace works
-    # whether the binary currently has no profile, the package's stock profile,
-    # or a previous version of our override — making this step idempotent.
-    apparmor_parser --replace "$override_file"
-    success "AppArmor '${profile_name}' override loaded into running kernel."
-}
-
-# Install a systemd one-shot service that reloads the /etc/apparmor.d/local/
-# override profiles on every boot, *after* apparmor.service has loaded the
-# package-managed profiles.  This ensures our flags=(unconfined) versions
-# survive a podman/crun/slirp4netns upgrade whose postinst reloads the stock
-# (restricting) AppArmor profile mid-session.
-create_apparmor_reload_service() {
-    local service_file="/etc/systemd/system/rootless-podman-apparmor.service"
-
-    info "Installing rootless-podman-apparmor.service..."
-
-    cat >"$service_file" <<'EOF'
-[Unit]
-Description=Reload rootless-Podman AppArmor unconfined overrides
-Documentation=https://github.com/containers/podman/blob/main/docs/tutorials/rootless_tutorial.md
-# Run after AppArmor so our overrides replace the stock profiles loaded
-# by apparmor.service.  This also covers reboots following a package upgrade
-# whose postinst restored the stock (restricting) profile.
-After=apparmor.service
-Wants=apparmor.service
-
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-# Reload each unconfined override.  The leading '-' makes individual failures
-# non-fatal so a missing profile (e.g. slirp4netns not installed) does not
-# block the other overrides from loading.
-ExecStart=-/usr/sbin/apparmor_parser --replace /etc/apparmor.d/local/podman
-ExecStart=-/usr/sbin/apparmor_parser --replace /etc/apparmor.d/local/crun
-ExecStart=-/usr/sbin/apparmor_parser --replace /etc/apparmor.d/local/slirp4netns
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-    systemctl daemon-reload
-    systemctl enable rootless-podman-apparmor.service
-    success "rootless-podman-apparmor.service installed and enabled."
-}
-
-setup_apparmor() {
-    info "Configuring AppArmor profiles for rootless Podman..."
-
-    setup_apparmor_override "podman" "/usr/bin/podman"
-    setup_apparmor_override "slirp4netns" "/usr/bin/slirp4netns"
-    setup_apparmor_override "crun" "/usr/bin/crun"
-
-    create_apparmor_reload_service
-
-    success "AppArmor configuration complete."
-}
-
-# ── Step 10: Configure network backend ────────────────────────────────────────
+# ── Step 9: Configure network backend ─────────────────────────────────────────
 #
 # `network_backend` in containers.conf controls Podman's CNI/Netavark stack
 # and is a distinct concept from the rootless networking *helper* process
@@ -583,7 +430,6 @@ setup_network_backend() {
         return
     fi
 
-    # AppArmor is now patched, so `podman --version` is safe to call.
     local podman_major
     podman_major=$(podman --version 2>/dev/null | awk '{print $3}' | cut -d. -f1)
 
@@ -607,7 +453,7 @@ EOF
     fi
 }
 
-# ── Step 11: Smoke test ───────────────────────────────────────────────────────
+# ── Step 10: Smoke test ───────────────────────────────────────────────────────
 
 smoke_test() {
     info "Running smoke test..."
@@ -659,7 +505,7 @@ smoke_test() {
         warn "Common causes on DigitalOcean droplets:"
         warn "  - kernel.unprivileged_userns_clone=0  (check: sysctl kernel.unprivileged_userns_clone)"
         warn "  - newuidmap/newgidmap not SUID         (check: ls -l /usr/bin/new{uid,gid}map)"
-        warn "  - AppArmor override not loaded          (check: grep 'flags=' /etc/apparmor.d/local/podman)"
+        warn "  - AppArmor profile no longer unconfined (check: grep flags= /etc/apparmor.d/podman)"
         warn "  - XDG_RUNTIME_DIR not yet created      (may resolve after first login/linger activates)"
         exit 1
     fi
@@ -671,7 +517,7 @@ usage() {
     cat <<EOF
 Usage: sudo ./setup_rootless_podman.sh [OPTIONS] [USERNAME]
 
-Sets up a rootless Podman user with AppArmor configuration on Ubuntu 24.04.
+Sets up a rootless Podman user on Ubuntu 24.04.
 
 Arguments:
   USERNAME        System user to create and configure for rootless Podman.
@@ -689,10 +535,8 @@ What this script does:
    6. Lowers net.ipv4.ip_unprivileged_port_start to 443.
    7. Writes ~/.config/containers/storage.conf (overlay driver).
    8. Writes ~/.config/containers/registries.conf (docker.io search).
-   9. Writes flags=(unconfined) AppArmor overrides to /etc/apparmor.d/local/
-         and installs rootless-podman-apparmor.service to reload them on boot.
-  10. Configures the network backend in containers.conf (pasta on Podman v5+).
-  11. Runs a smoke test to verify rootless operation.
+   9. Configures the network backend in containers.conf (pasta on Podman v5+).
+  10. Runs a smoke test to verify rootless operation.
 
 Prerequisites:
   - Must be run as root (or via sudo).
@@ -758,9 +602,8 @@ main() {
     setup_privileged_ports # Allows rootless containers to bind to port 443+
     setup_storage          # reads PODMAN_UID (set by setup_user())
     setup_registries
-    setup_apparmor
-    setup_network_backend # AppArmor must be patched before calling podman --version
-    smoke_test            # reads PODMAN_UID (set by setup_user())
+    setup_network_backend
+    smoke_test # reads PODMAN_UID (set by setup_user())
 
     echo
     success "=== Setup complete! ==="
