@@ -150,7 +150,9 @@ tars `/srv/vaultwarden` into `/root/vaultwarden-backups/`, repins `Image=` in th
 quadlet, restarts, health-checks `/alive`, and automatically rolls back to the
 previous image if the new one fails to come up. With no argument it updates to
 the `VW_IMAGE` version pinned at the top of the script; bump that constant in
-the repo too so fresh installs match.
+the repo too so fresh installs match. `update <version>` also works; the
+quadlet is then pinned to the digest that was actually pulled, so a later
+re-push of that tag can't change what runs.
 
 ### `client/digitalocean/dosb`
 

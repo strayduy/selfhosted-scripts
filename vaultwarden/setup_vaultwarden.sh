@@ -293,6 +293,28 @@ quadlet_port() {
     printf '%s' "$(cut -d: -f2 <<<"$line")"
 }
 
+# Split an image reference "registry/repo[:tag][@sha256:...]".
+# A ':' only marks a tag if it's in the last path component (registries can
+# carry a port, e.g. host:5000/repo) and before any '@digest'.
+#
+# Usage: image_repo <ref>   -> registry/repo
+#        image_tag <ref>    -> tag (or "latest" if none)
+image_repo() {
+    local ref="${1%@*}"
+    local last="${ref##*/}"
+    [[ "$last" == *:* ]] && ref="${ref%:*}"
+    printf '%s' "$ref"
+}
+image_tag() {
+    local ref="${1%@*}"
+    local last="${ref##*/}"
+    if [[ "$last" == *:* ]]; then
+        printf '%s' "${last##*:}"
+    else
+        printf 'latest'
+    fi
+}
+
 # Rewrite the Image= line of the installed quadlet in place.
 #
 # Read-modify-write with shell parameter expansion rather than `sed -i`:
@@ -355,13 +377,15 @@ cmd_update() {
     #   (no arg)          -> VW_IMAGE pinned at the top of this script
     #   1.35.5            -> <current repository>:1.35.5
     #   repo/name:tag     -> used verbatim (allows switching to the alpine tag)
+    # A target without a digest is pinned to the digest it resolves to right
+    # after the pull (Step 1), so the installed quadlet is always tag@digest.
     local target_image
     if [[ -z "$target" ]]; then
         target_image="$VW_IMAGE"
     elif [[ "$target" == *"/"* ]]; then
         target_image="$target"
     else
-        target_image="${current_image%:*}:${target}"
+        target_image="$(image_repo "$current_image"):${target}"
     fi
     [[ "$target_image" =~ ^[A-Za-z0-9._/-]+(:[A-Za-z0-9._-]+)?(@sha256:[a-f0-9]{64})?$ ]] \
         || error "Invalid image reference: $target_image"
@@ -370,8 +394,11 @@ cmd_update() {
     info "Current image: $current_image"
     info "Target image:  $target_image"
 
-    if [[ "$current_image" == "$target_image" ]]; then
-        success "Already running $target_image — nothing to do"
+    # Comparing without the digest for tag-only targets also means a re-pushed
+    # tag isn't silently followed: same tag => nothing to do.
+    if [[ "$current_image" == "$target_image" ||
+        ("$target_image" != *@sha256:* && "${current_image%@*}" == "$target_image") ]]; then
+        success "Already running $current_image — nothing to do"
         return 0
     fi
 
@@ -388,6 +415,20 @@ cmd_update() {
     run_as_user "$VW_SYSTEM_USER" podman pull "$target_image"
     success "Image pulled"
 
+    # Pin a tag-only target to the digest just pulled, so later re-pushes of
+    # the tag on the registry can't change what this instance runs.
+    if [[ "$target_image" != *@sha256:* ]]; then
+        local digest
+        digest=$(run_as_user "$VW_SYSTEM_USER" \
+            podman image inspect --format '{{.Digest}}' "$target_image" 2>/dev/null || true)
+        if [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            target_image="${target_image}@${digest}"
+            info "Pinned to digest: $target_image"
+        else
+            warn "Could not resolve the pulled image's digest — pinning by tag only"
+        fi
+    fi
+
     # ── Step 2: Stop the service ──────────────────────────────────────────────
     info "Step 2: Stopping Vaultwarden..."
     systemctl_user "$VW_SYSTEM_USER" stop vaultwarden.service || true
@@ -399,7 +440,7 @@ cmd_update() {
     if [[ "$do_backup" == true ]]; then
         mkdir -p "$VW_BACKUP_DIR"
         chmod 700 "$VW_BACKUP_DIR"
-        backup_file="$VW_BACKUP_DIR/vaultwarden-$(date +%Y%m%d-%H%M%S)-pre-${target_image##*:}.tar.gz"
+        backup_file="$VW_BACKUP_DIR/vaultwarden-$(date +%Y%m%d-%H%M%S)-pre-$(image_tag "$target_image").tar.gz"
         info "Step 3: Backing up $VW_DATA_DIR to $backup_file..."
         tar czf "$backup_file" -C "$(dirname "$VW_DATA_DIR")" "$(basename "$VW_DATA_DIR")"
         chmod 600 "$backup_file"
@@ -446,7 +487,7 @@ cmd_update() {
     info "Old images are kept for rollback. Remove them once you're happy:"
     info "  sudo -u $VW_SYSTEM_USER podman image prune -f"
     info "To roll back manually:"
-    info "  sudo $0 update ${current_image##*:}"
+    info "  sudo $0 update $current_image"
     echo ""
 }
 
@@ -835,6 +876,7 @@ Subcommands:
                          to the version pinned in this script ($VW_IMAGE).
                          Accepts a bare tag (1.35.5) or a full image
                          reference (docker.io/vaultwarden/server:1.35.5-alpine).
+                         Tag-only targets are pinned to the digest pulled.
   cert-refresh <host>    Fetch/renew the Tailscale TLS certificate and
                          restart Vaultwarden if the cert changed. Run by
                          cron daily; safe to invoke manually.
