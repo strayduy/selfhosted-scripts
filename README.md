@@ -182,6 +182,18 @@ Build with a pinned toolchain (`mise install` then `cargo build --release`); see
 Unlike the bash scripts, this is a Rust project and is **not** subject to the
 Ubuntu-24.04 / `root` assumptions in `AGENTS.md`.
 
+## Known gaps
+
+- **No automated Vaultwarden backups.** The SQLite DB, `attachments/`,
+  `rsa_key*` and `config.json` under `/srv/vaultwarden` live only on the
+  droplet's disk; backups are manual (droplet snapshots). A daily off-droplet
+  backup (e.g. restic to a versioned S3 bucket) is the natural next step.
+- **AppArmor on older droplets.** Droplets bootstrapped before AppArmor
+  mass-enforcement was removed (and snapshots of them) still have stripped
+  stock profiles plus `setup_rootless_podman.sh`'s old unconfined overrides
+  and `rootless-podman-apparmor.service`. They keep working; rebuild from a
+  fresh droplet to get back to stock profiles.
+
 ## Conventions
 
 See [`AGENTS.md`](./AGENTS.md) for the shared script style guide.
