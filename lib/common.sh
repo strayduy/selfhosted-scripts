@@ -39,10 +39,13 @@ fi
 # so they can be filtered separately. error() exits the script — callers
 # that want to handle a failure themselves should test explicitly instead.
 
-info()    { echo "${_C_BLUE}[INFO]${_C_NC}    $*"; }
+info() { echo "${_C_BLUE}[INFO]${_C_NC}    $*"; }
 success() { echo "${_C_GREEN}[OK]${_C_NC}      $*"; }
-warn()    { echo "${_C_YELLOW}[WARN]${_C_NC}   $*" >&2; }
-error()   { echo "${_C_RED}[ERROR]${_C_NC} $*" >&2; exit 1; }
+warn() { echo "${_C_YELLOW}[WARN]${_C_NC}   $*" >&2; }
+error() {
+    echo "${_C_RED}[ERROR]${_C_NC} $*" >&2
+    exit 1
+}
 
 # Section banner — used to delimit major phases of a script.
 section() { echo -e "\n${_C_CYAN}━━━  $*  ━━━${_C_NC}"; }
@@ -77,7 +80,8 @@ require_ubuntu() {
 #
 # Usage: run_as_user <user> <cmd> [args…]
 run_as_user() {
-    local user="$1"; shift
+    local user="$1"
+    shift
     local uid
     uid=$(id -u "$user")
     sudo -u "$user" \
@@ -91,7 +95,8 @@ run_as_user() {
 #
 # Usage: systemctl_user <user> <systemctl-args…>
 systemctl_user() {
-    local user="$1"; shift
+    local user="$1"
+    shift
     run_as_user "$user" systemctl --user "$@"
 }
 
