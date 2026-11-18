@@ -86,7 +86,7 @@ pub fn run(
         ui::success("Droplet powered back on.");
     } else if !args.live {
         ui::info(&format!(
-            "Droplet `{}` left powered off. Destroy it with `dosb destroy-droplet {}`.",
+            "Droplet `{}` left powered off. Destroy it with `fleeting destroy-droplet {}`.",
             droplet.name, droplet.name
         ));
     }

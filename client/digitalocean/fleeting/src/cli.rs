@@ -4,10 +4,10 @@ use clap::{Args, Parser, Subcommand};
 
 /// Manage ephemeral DigitalOcean sandbox droplets.
 #[derive(Debug, Parser)]
-#[command(name = "dosb", version, about, long_about = None)]
+#[command(name = "fleeting", version, about, long_about = None)]
 pub struct Cli {
-    /// Path to the config file (overrides $DOSB_CONFIG and the default location).
-    #[arg(long, global = true, env = "DOSB_CONFIG")]
+    /// Path to the config file (overrides $FLEETING_CONFIG and the default location).
+    #[arg(long, global = true, env = "FLEETING_CONFIG")]
     pub config: Option<PathBuf>,
 
     /// Perform read-only lookups and validation, but make no changes; print

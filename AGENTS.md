@@ -23,7 +23,7 @@ laptop, not the droplet. They are **not** bash, **not** run as root, and **not**
 bound to Ubuntu 24.04, so the bash style guide, preflight checks (`require_root`,
 `require_ubuntu`), and `apt`/systemd conventions below do **not** apply to them.
 Each `client/` subtree carries its own tooling and conventions (e.g.
-`client/digitalocean/dosb` is a Rust project with its own `Cargo.toml` and
+`client/digitalocean/fleeting` is a Rust project with its own `Cargo.toml` and
 pinned toolchain). When adding a laptop-run tool, place it under `client/`.
 
 ## Script style guide

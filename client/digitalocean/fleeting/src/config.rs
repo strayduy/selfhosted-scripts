@@ -49,13 +49,13 @@ pub struct Config {
 
 impl Config {
     /// Resolve the config-file path: explicit override wins, otherwise the
-    /// XDG/`directories` default (`~/.config/dosb/config.toml`).
+    /// XDG/`directories` default (`~/.config/fleeting/config.toml`).
     pub fn path(override_path: Option<&Path>) -> Result<PathBuf> {
         if let Some(p) = override_path {
             return Ok(p.to_path_buf());
         }
-        let dirs = directories::ProjectDirs::from("", "", "dosb")
-            .ok_or_else(|| anyhow!("could not determine a config directory for dosb"))?;
+        let dirs = directories::ProjectDirs::from("", "", "fleeting")
+            .ok_or_else(|| anyhow!("could not determine a config directory for fleeting"))?;
         Ok(dirs.config_dir().join("config.toml"))
     }
 
@@ -100,7 +100,7 @@ impl Config {
 fn read_config_file(path: &Path) -> Result<ConfigFile> {
     if !path.exists() {
         return Err(anyhow!(
-            "no config file found at {}\nRun `dosb init` to create one.",
+            "no config file found at {}\nRun `fleeting init` to create one.",
             path.display()
         ));
     }
@@ -113,7 +113,7 @@ fn read_config_file(path: &Path) -> Result<ConfigFile> {
 
 fn missing(key: &str, path: &Path) -> anyhow::Error {
     anyhow!(
-        "required config value `{key}` is not set in {}\nSet it there or run `dosb init`.",
+        "required config value `{key}` is not set in {}\nSet it there or run `fleeting init`.",
         path.display()
     )
 }
@@ -157,7 +157,7 @@ mod tests {
     fn temp_config(contents: &str) -> PathBuf {
         let mut path = std::env::temp_dir();
         let unique = format!(
-            "dosb-test-{}-{:?}.toml",
+            "fleeting-test-{}-{:?}.toml",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -227,8 +227,8 @@ mod tests {
 
     #[test]
     fn missing_file_points_at_init() {
-        let path = PathBuf::from("/nonexistent/dosb/does-not-exist.toml");
+        let path = PathBuf::from("/nonexistent/fleeting/does-not-exist.toml");
         let err = Config::load(Some(&path)).unwrap_err().to_string();
-        assert!(err.contains("dosb init"), "unexpected error: {err}");
+        assert!(err.contains("fleeting init"), "unexpected error: {err}");
     }
 }

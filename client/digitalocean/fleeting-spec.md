@@ -1,4 +1,4 @@
-# `dosb` — DigitalOcean sandbox CLI spec
+# `fleeting` — DigitalOcean sandbox CLI spec
 
 A Rust CLI for managing **ephemeral sandbox droplets** on DigitalOcean. It is a
 scoped-down workflow tool built around a single loop:
@@ -36,8 +36,8 @@ non-sandbox snapshot.
 ## Configuration
 
 - Format: **TOML**.
-- Location: `~/.config/dosb/config.toml` (XDG). Override with `--config <path>` or
-  the `DOSB_CONFIG` env var. Use an XDG-aware crate so paths are correct on macOS
+- Location: `~/.config/fleeting/config.toml` (XDG). Override with `--config <path>` or
+  the `FLEETING_CONFIG` env var. Use an XDG-aware crate so paths are correct on macOS
   too.
 - Precedence for every value: **command-line flag > environment variable >
   config file > built-in default**.
@@ -86,11 +86,11 @@ github_agent_socket  = "~/.ssh/agent-github.sock" # dedicated agent forwarded to
 
 ## Commands
 
-Binary name: **`dosb`**. Verb-noun subcommand naming throughout.
+Binary name: **`fleeting`**. Verb-noun subcommand naming throughout.
 
 ### `init`
 Interactive first-run setup. Prompts for each config value and writes
-`~/.config/dosb/config.toml` (respecting `--config` / `DOSB_CONFIG`).
+`~/.config/fleeting/config.toml` (respecting `--config` / `FLEETING_CONFIG`).
 
 ### `create-droplet`
 Creates an ephemeral droplet from a sandbox snapshot.
@@ -181,7 +181,7 @@ Does not need the DigitalOcean token.
 ## Suggested module layout
 
 ```
-dosb/
+fleeting/
 ├── Cargo.toml
 └── src/
     ├── main.rs        # entrypoint, dispatch

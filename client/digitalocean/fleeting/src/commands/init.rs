@@ -23,7 +23,7 @@ pub fn run(args: &InitArgs, config_override: Option<&Path>) -> Result<()> {
         }
     }
 
-    ui::info("Setting up dosb. Required values have no default and must be entered.");
+    ui::info("Setting up fleeting. Required values have no default and must be entered.");
 
     let region: String = Input::with_theme(&theme)
         .with_prompt("DigitalOcean region slug (e.g. sfo3) [required]")
@@ -99,14 +99,14 @@ pub fn run(args: &InitArgs, config_override: Option<&Path>) -> Result<()> {
     ui::info("Remember to export your API token: export DIGITALOCEAN_ACCESS_TOKEN=...");
 
     let setup_github = Confirm::with_theme(&theme)
-        .with_prompt("Set up the GitHub key for agent forwarding now (`dosb setup-github`)?")
+        .with_prompt("Set up the GitHub key for agent forwarding now (`fleeting setup-github`)?")
         .default(true)
         .interact()?;
     if setup_github {
         let config = Config::load(Some(&path))?;
         setup_github::run(&config, false)?;
     } else {
-        ui::info("You can run `dosb setup-github` later.");
+        ui::info("You can run `fleeting setup-github` later.");
     }
     Ok(())
 }

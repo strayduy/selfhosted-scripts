@@ -1,4 +1,4 @@
-//! Minimal typed client for the slice of the DigitalOcean v2 API that dosb
+//! Minimal typed client for the slice of the DigitalOcean v2 API that fleeting
 //! needs: droplets, snapshots (images), SSH keys, and droplet actions.
 
 mod models;
@@ -40,7 +40,7 @@ impl Client {
             bail!("{TOKEN_ENV} is set but empty");
         }
         let http = HttpClient::builder()
-            .user_agent(concat!("dosb/", env!("CARGO_PKG_VERSION")))
+            .user_agent(concat!("fleeting/", env!("CARGO_PKG_VERSION")))
             .build()
             .context("building HTTP client")?;
         Ok(Client { http, token })

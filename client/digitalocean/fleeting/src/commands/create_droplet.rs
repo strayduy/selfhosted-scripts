@@ -80,7 +80,7 @@ pub fn run(
         "  ssh -i {} -p {} {}@{}",
         config.identity_file, config.ssh_port, config.ssh_user, ip
     );
-    println!("  dosb connect-droplet {}", droplet.name);
+    println!("  fleeting connect-droplet {}", droplet.name);
     Ok(())
 }
 

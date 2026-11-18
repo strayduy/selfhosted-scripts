@@ -19,15 +19,15 @@ selfhosted-scripts/
 │   └── setup_vaultwarden.sh       # Deploy Vaultwarden behind Tailscale TLS
 ├── client/                        # Tools run from a client laptop, not the droplet
 │   └── digitalocean/
-│       ├── dosb-spec.md           # Design spec for the dosb CLI
-│       └── dosb/                  # Rust CLI for ephemeral sandbox droplets
+│       ├── fleeting-spec.md       # Design spec for the fleeting CLI
+│       └── fleeting/              # Rust CLI for ephemeral sandbox droplets
 ├── AGENTS.md                      # Conventions for humans/AI editing this repo
 └── README.md
 ```
 
 > **Convention:** top-level app/role directories (`server/`, `vaultwarden/`) run
 > *on* the droplet, as `root`, on Ubuntu 24.04. Anything under `client/` runs
-> from your **laptop** instead — e.g. `client/digitalocean/dosb` drives the
+> from your **laptop** instead — e.g. `client/digitalocean/fleeting` drives the
 > DigitalOcean API to create and tear down throwaway droplets.
 
 ## Typical droplet flow
@@ -78,7 +78,7 @@ What it configures:
 - chrony, AppArmor (stock profiles), `noexec,nosuid,nodev` on `/dev/shm`, 5-minute sudo credential cache.
 - GitHub's SSH host keys pinned in `/etc/ssh/ssh_known_hosts`, plus an
   `/etc/ssh/sshrc` + `/etc/tmux.conf` pair that keeps a forwarded agent usable
-  inside tmux across reconnects (see dosb's GitHub agent forwarding below).
+  inside tmux across reconnects (see fleeting's GitHub agent forwarding below).
 - Optional Tailscale install (pinned version, hash-verified) + Tailscale SSH.
 - With Tailscale: a cloud-init first-boot hook so droplets created from a
   snapshot get a fresh Tailscale identity (see `finalize_tailscale.sh`).
@@ -157,7 +157,7 @@ the repo too so fresh installs match. `update <version>` also works; the
 quadlet is then pinned to the digest that was actually pulled, so a later
 re-push of that tag can't change what runs.
 
-### `client/digitalocean/dosb`
+### `client/digitalocean/fleeting`
 
 A small Rust CLI (run from your **laptop**, not the droplet) for managing
 **ephemeral sandbox droplets** used as throwaway agentic-coding environments. It
@@ -166,25 +166,25 @@ from `DIGITALOCEAN_ACCESS_TOKEN`. The workflow it automates: create a droplet
 from a hardened snapshot → work → optionally snapshot → destroy.
 
 ```
-dosb init               # interactive first-run config (~/.config/dosb/config.toml)
-dosb create-droplet     # create from a sandbox snapshot, block until active
-dosb list-droplets      # list ephemeral (tagged) droplets
-dosb list-snapshots     # list sandbox-prefixed snapshots
-dosb take-snapshot      # power off, snapshot, leave off
-dosb destroy-droplet    # destroy one droplet (type-the-name confirmation)
-dosb connect-droplet    # exec ssh into a droplet (forwards the GitHub agent)
-dosb setup-github       # one-time: create + register the GitHub-only key via gh
+fleeting init               # interactive first-run config (~/.config/fleeting/config.toml)
+fleeting create-droplet     # create from a sandbox snapshot, block until active
+fleeting list-droplets      # list ephemeral (tagged) droplets
+fleeting list-snapshots     # list sandbox-prefixed snapshots
+fleeting take-snapshot      # power off, snapshot, leave off
+fleeting destroy-droplet    # destroy one droplet (type-the-name confirmation)
+fleeting connect-droplet    # exec ssh into a droplet (forwards the GitHub agent)
+fleeting setup-github       # one-time: create + register the GitHub-only key via gh
 ```
 
 **GitHub access.** Droplets hold no GitHub credentials. `connect-droplet`
 forwards a dedicated laptop-side ssh-agent that holds only a GitHub key, so
 `git pull`/`push` work during attended sessions and nothing usable ends up in a
-snapshot. See the dosb README for details.
+snapshot. See the fleeting README for details.
 
 Migrating from per-repo keys stored on droplets (one-time):
 
 1. Re-bootstrap a fresh droplet and take a new base snapshot.
-2. Run `dosb setup-github`, connect, and confirm `git push` works — including
+2. Run `fleeting setup-github`, connect, and confirm `git push` works — including
    from a tmux pane after detaching and reconnecting.
 3. Delete the old deploy keys on GitHub, then delete the old `sandbox-`
    snapshots that contain them (DigitalOcean console).
@@ -196,8 +196,8 @@ accidentally destroy a real server or boot a sandbox from the wrong image. A
 global `--dry-run` validates inputs against the live API without making changes.
 
 Build with a pinned toolchain (`mise install` then `cargo build --release`); see
-[`client/digitalocean/dosb/README.md`](./client/digitalocean/dosb/README.md) and
-[`client/digitalocean/dosb-spec.md`](./client/digitalocean/dosb-spec.md) for details.
+[`client/digitalocean/fleeting/README.md`](./client/digitalocean/fleeting/README.md) and
+[`client/digitalocean/fleeting-spec.md`](./client/digitalocean/fleeting-spec.md) for details.
 
 Unlike the bash scripts, this is a Rust project and is **not** subject to the
 Ubuntu-24.04 / `root` assumptions in `AGENTS.md`.

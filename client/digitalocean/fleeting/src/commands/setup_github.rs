@@ -1,4 +1,4 @@
-//! `dosb setup-github`: create the GitHub-only SSH key that `connect-droplet`
+//! `fleeting setup-github`: create the GitHub-only SSH key that `connect-droplet`
 //! forwards (via a dedicated agent) and register it with the GitHub account
 //! through the `gh` CLI. Idempotent: every step checks before acting.
 
@@ -41,12 +41,12 @@ pub fn run(config: &Config, dry_run: bool) -> Result<()> {
             key.display()
         ));
     } else {
-        generate_key(&key, &format!("dosb-github@{host}"))?;
+        generate_key(&key, &format!("fleeting-github@{host}"))?;
         ui::success(&format!("Generated {}", key.display()));
     }
 
     // ── Register with GitHub ──────────────────────────────────────────────
-    let title = format!("dosb-github ({host})");
+    let title = format!("fleeting-github ({host})");
     let registered = registered_keys()?;
     let local = if pubkey.exists() {
         Some(read_key_body(&pubkey)?)
@@ -76,7 +76,7 @@ pub fn run(config: &Config, dry_run: bool) -> Result<()> {
 
     // ── Verify ────────────────────────────────────────────────────────────
     verify(&key);
-    ui::info("`dosb connect-droplet` will now forward this key to droplets.");
+    ui::info("`fleeting connect-droplet` will now forward this key to droplets.");
     Ok(())
 }
 
@@ -243,7 +243,7 @@ mod tests {
     #[test]
     fn key_body_strips_comment() {
         assert_eq!(
-            key_body("ssh-ed25519 AAAAC3Nz dosb-github@mac\n").as_deref(),
+            key_body("ssh-ed25519 AAAAC3Nz fleeting-github@mac\n").as_deref(),
             Some("ssh-ed25519 AAAAC3Nz")
         );
         assert_eq!(

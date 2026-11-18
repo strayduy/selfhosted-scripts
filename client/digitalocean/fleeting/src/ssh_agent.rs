@@ -170,7 +170,7 @@ mod tests {
 
     #[test]
     fn parses_fingerprint_field() {
-        let line = "256 SHA256:AbC123+/xyz dosb-github@mac (ED25519)";
+        let line = "256 SHA256:AbC123+/xyz fleeting-github@mac (ED25519)";
         assert_eq!(
             parse_fingerprint(line).as_deref(),
             Some("SHA256:AbC123+/xyz")

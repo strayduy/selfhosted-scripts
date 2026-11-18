@@ -1,4 +1,4 @@
-//! Typed models for DigitalOcean API responses. Only the fields dosb uses are
+//! Typed models for DigitalOcean API responses. Only the fields fleeting uses are
 //! deserialized; the rest are ignored.
 
 use serde::Deserialize;

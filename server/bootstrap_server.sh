@@ -5,7 +5,7 @@
 # Hardens a freshly-provisioned Ubuntu 24.04 droplet: creates an admin user,
 # locks down sshd, enables UFW + fail2ban + unattended-upgrades, applies kernel
 # hardening, pins GitHub's SSH host keys (for git over a forwarded agent, see
-# dosb), and optionally joins the machine to a Tailscale network.
+# fleeting), and optionally joins the machine to a Tailscale network.
 #
 # Usage:
 #   ./bootstrap_server.sh <username> [ssh_port] [--tailscale] [--ts-ssh]
@@ -400,7 +400,7 @@ ClientAliveCountMax 2
 X11Forwarding no
 UseDNS no
 PermitUserEnvironment no
-# dosb forwards a GitHub-only agent; explicit so verification catches overrides.
+# fleeting forwards a GitHub-only agent; explicit so verification catches overrides.
 AllowAgentForwarding yes
 EOF
     chmod 644 "$dropin"
@@ -454,9 +454,9 @@ verify_sshd_effective_config() {
 }
 
 # ── Step 8: Configure SSH client for GitHub ───────────────────────────────────
-# dosb's connect-droplet forwards a GitHub-only ssh-agent from the laptop, so
+# fleeting's connect-droplet forwards a GitHub-only ssh-agent from the laptop, so
 # git can pull/push here without any GitHub key on the droplet (see
-# client/digitalocean/dosb/README.md). This step makes that work smoothly.
+# client/digitalocean/fleeting/README.md). This step makes that work smoothly.
 
 # GitHub's SSH host keys, pinned so the first `git fetch` on a fresh droplet
 # can't be man-in-the-middled (and doesn't stop at a trust-on-first-use prompt).

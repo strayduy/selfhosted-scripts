@@ -84,7 +84,7 @@ fn prepare_github_agent(config: &Config, dry_run: bool) -> Option<PathBuf> {
     if !key.exists() {
         ui::warn(&format!(
             "GitHub key {} not found — connecting without agent forwarding. \
-             Run `dosb setup-github` to set it up.",
+             Run `fleeting setup-github` to set it up.",
             key.display()
         ));
         return None;
