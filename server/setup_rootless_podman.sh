@@ -81,7 +81,7 @@ install_dependencies() {
     #
     # Both passt and slirp4netns are installed regardless of Podman version;
     # setup_network_backend() picks the right one. Both are small.
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends uidmap podman fuse-overlayfs crun passt slirp4netns
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends uidmap podman crun passt slirp4netns
 
     # Verify that newuidmap/newgidmap are SUID root after install.
     # On minimal images or custom DigitalOcean snapshots, the uidmap package
@@ -321,50 +321,21 @@ setup_storage() {
         return
     fi
 
-    # Detect whether the running kernel supports native rootless
-    # overlay mounts (kernels 5.11+, which Ubuntu 24.04 ships). Native overlay
-    # is faster than fuse-overlayfs. If supported, omit mount_program and let
-    # Podman use it automatically; only fall back to fuse-overlayfs on older
-    # kernels or if native overlay isn't available.
-    local KERNEL_VERSION
-    KERNEL_VERSION=$(uname -r)
-    local KERNEL_MAJOR KERNEL_MINOR
-    KERNEL_MAJOR=${KERNEL_VERSION%%.*}
-    KERNEL_MINOR=${KERNEL_VERSION#*.}
-    KERNEL_MINOR=${KERNEL_MINOR%%.*}
-
-    local USE_FUSE_OVERLAYFS=true
-    if ((KERNEL_MAJOR > 5 || (KERNEL_MAJOR == 5 && KERNEL_MINOR >= 11))); then
-        # Also verify that the kernel was actually compiled with overlay support
-        if grep -qw overlay /proc/filesystems 2>/dev/null; then
-            USE_FUSE_OVERLAYFS=false
-            info "Kernel ${KERNEL_VERSION} supports native overlay — skipping fuse-overlayfs."
-        fi
-    fi
-
+    # Native rootless overlay (kernel 5.11+) is always available: Ubuntu 24.04
+    # ships 6.8+ and require_ubuntu rejects anything else, so no fuse-overlayfs
+    # fallback is needed.
+    #
     # Do not set runroot to /run/user/${PODMAN_UID}. That path is a
     # tmpfs mount created by systemd-logind and may not exist at config-write
     # time (linger may not have fully activated yet). Omit runroot entirely and
     # let Podman use its default, which it resolves correctly at runtime once
     # the XDG_RUNTIME_DIR session is live.
-    if [[ "$USE_FUSE_OVERLAYFS" == "true" ]]; then
-        sudo -u "$PODMAN_USER" tee "$CONFIG_FILE" >/dev/null <<EOF
-[storage]
-driver = "overlay"
-graphroot = "${GRAPH_ROOT}"
-
-[storage.options.overlay]
-mount_program = "/usr/bin/fuse-overlayfs"
-EOF
-        success "Storage config written (using fuse-overlayfs) to '$CONFIG_FILE'."
-    else
-        sudo -u "$PODMAN_USER" tee "$CONFIG_FILE" >/dev/null <<EOF
+    sudo -u "$PODMAN_USER" tee "$CONFIG_FILE" >/dev/null <<EOF
 [storage]
 driver = "overlay"
 graphroot = "${GRAPH_ROOT}"
 EOF
-        success "Storage config written (using native kernel overlay) to '$CONFIG_FILE'."
-    fi
+    success "Storage config written (native kernel overlay) to '$CONFIG_FILE'."
 }
 
 # ── Step 8: Configure container registries ────────────────────────────────────
