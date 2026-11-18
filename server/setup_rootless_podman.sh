@@ -17,7 +17,7 @@ trap 'error "Failed at line $LINENO (command: $BASH_COMMAND)"' ERR
 # ── Configuration ─────────────────────────────────────────────────────────────
 
 PODMAN_USER="podman" # overridden by argument parsing in main()
-SUBUID_COUNT=65536  # 65536 UIDs = a full "sub-namespace" range
+SUBUID_COUNT=65536   # 65536 UIDs = a full "sub-namespace" range
 
 # ── State variables exported by setup_user() ──────────────────────────────────
 #
@@ -54,14 +54,14 @@ preflight_checks() {
     # containers. Check both the Ubuntu-specific sysctl and the upstream one.
     local userns_clone
     userns_clone=$(sysctl -n kernel.unprivileged_userns_clone 2>/dev/null || echo "1")
-    [[ "$userns_clone" -ne 0 ]] ||
-        error "Unprivileged user namespaces are disabled (kernel.unprivileged_userns_clone=0). " \
+    [[ "$userns_clone" -ne 0 ]] \
+        || error "Unprivileged user namespaces are disabled (kernel.unprivileged_userns_clone=0). " \
             "Enable with: sysctl -w kernel.unprivileged_userns_clone=1"
 
     local max_userns
     max_userns=$(sysctl -n user.max_user_namespaces 2>/dev/null || echo "1")
-    [[ "$max_userns" -ne 0 ]] ||
-        error "user.max_user_namespaces=0 — user namespaces are disabled kernel-wide. " \
+    [[ "$max_userns" -ne 0 ]] \
+        || error "user.max_user_namespaces=0 — user namespaces are disabled kernel-wide. " \
             "Enable with: sysctl -w user.max_user_namespaces=15000"
 
     success "Preflight checks passed."
@@ -94,8 +94,8 @@ install_dependencies() {
     # On minimal images or custom DigitalOcean snapshots, the uidmap package
     # may install without the SUID bit, silently breaking user namespace setup.
     for bin in /usr/bin/newuidmap /usr/bin/newgidmap; do
-        [[ -u "$bin" ]] ||
-            error "$bin is not SUID root. Rootless user namespace remapping will fail. " \
+        [[ -u "$bin" ]] \
+            || error "$bin is not SUID root. Rootless user namespace remapping will fail. " \
                 "Fix with: chmod u+s $bin"
     done
 
@@ -218,9 +218,9 @@ setup_subids() {
     # confusing "cannot change ownership" errors on the next container run.
     if [[ "$PODMAN_USER_PREEXISTED" == "true" ]] && [[ "$subids_changed" == "true" ]]; then
         info "Pre-existing user with new subid ranges — running 'podman system migrate'..."
-        run_as_user "$PODMAN_USER" podman system migrate &&
-            success "podman system migrate completed." ||
-            warn "podman system migrate failed or was unnecessary — this is non-fatal if containers have not been used yet."
+        run_as_user "$PODMAN_USER" podman system migrate \
+            && success "podman system migrate completed." \
+            || warn "podman system migrate failed or was unnecessary — this is non-fatal if containers have not been used yet."
     fi
 }
 
@@ -314,8 +314,8 @@ setup_privileged_ports() {
 setup_storage() {
     info "Configuring Podman storage for '$PODMAN_USER'..."
 
-    [[ -n "$PODMAN_UID" ]] ||
-        error "PODMAN_UID is not set — setup_user() must be called before setup_storage()."
+    [[ -n "$PODMAN_UID" ]] \
+        || error "PODMAN_UID is not set — setup_user() must be called before setup_storage()."
 
     local CONFIG_DIR="/home/${PODMAN_USER}/.config/containers"
     local CONFIG_FILE="${CONFIG_DIR}/storage.conf"
@@ -337,7 +337,8 @@ setup_storage() {
     KERNEL_VERSION=$(uname -r)
     local KERNEL_MAJOR KERNEL_MINOR
     KERNEL_MAJOR=${KERNEL_VERSION%%.*}
-    KERNEL_MINOR=${KERNEL_VERSION#*.}; KERNEL_MINOR=${KERNEL_MINOR%%.*}
+    KERNEL_MINOR=${KERNEL_VERSION#*.}
+    KERNEL_MINOR=${KERNEL_MINOR%%.*}
 
     local USE_FUSE_OVERLAYFS=true
     if ((KERNEL_MAJOR > 5 || (KERNEL_MAJOR == 5 && KERNEL_MINOR >= 11))); then
@@ -447,8 +448,8 @@ setup_apparmor_override() {
     local disable_dir="/etc/apparmor.d/disable"
     local disable_symlink="${disable_dir}/${profile_name}"
 
-    command -v apparmor_parser &>/dev/null ||
-        error "apparmor_parser not found. Is AppArmor installed? (apt-get install apparmor)"
+    command -v apparmor_parser &>/dev/null \
+        || error "apparmor_parser not found. Is AppArmor installed? (apt-get install apparmor)"
 
     mkdir -p /etc/apparmor.d/local "${disable_dir}"
 
@@ -542,9 +543,9 @@ EOF
 setup_apparmor() {
     info "Configuring AppArmor profiles for rootless Podman..."
 
-    setup_apparmor_override "podman"      "/usr/bin/podman"
+    setup_apparmor_override "podman" "/usr/bin/podman"
     setup_apparmor_override "slirp4netns" "/usr/bin/slirp4netns"
-    setup_apparmor_override "crun"        "/usr/bin/crun"
+    setup_apparmor_override "crun" "/usr/bin/crun"
 
     create_apparmor_reload_service
 
@@ -611,8 +612,8 @@ EOF
 smoke_test() {
     info "Running smoke test..."
 
-    [[ -n "$PODMAN_UID" ]] ||
-        error "PODMAN_UID is not set — setup_user() must be called before smoke_test()."
+    [[ -n "$PODMAN_UID" ]] \
+        || error "PODMAN_UID is not set — setup_user() must be called before smoke_test()."
 
     # XDG_RUNTIME_DIR (/run/user/<uid>) is a tmpfs created by systemd-logind
     # when linger activates. The loginctl enable-linger call earlier is
@@ -639,8 +640,8 @@ smoke_test() {
     local result
     result=$(
         run_as_user "$PODMAN_USER" \
-            podman info --format '{{.Host.Security.Rootless}}' 2>/dev/null ||
-            true
+            podman info --format '{{.Host.Security.Rootless}}' 2>/dev/null \
+            || true
     )
 
     if [[ "$result" == "true" ]]; then
@@ -736,8 +737,8 @@ main() {
     # to useradd but are almost certainly a mistyped flag (e.g. "--help") and
     # would cause confusing failures in downstream commands that treat the
     # leading dash as an option prefix.
-    [[ "$PODMAN_USER" != -* ]] ||
-        error "Invalid username '$PODMAN_USER': usernames must not start with '-'."
+    [[ "$PODMAN_USER" != -* ]] \
+        || error "Invalid username '$PODMAN_USER': usernames must not start with '-'."
 
     require_root
     require_ubuntu "24.04"
@@ -758,8 +759,8 @@ main() {
     setup_storage          # reads PODMAN_UID (set by setup_user())
     setup_registries
     setup_apparmor
-    setup_network_backend  # AppArmor must be patched before calling podman --version
-    smoke_test             # reads PODMAN_UID (set by setup_user())
+    setup_network_backend # AppArmor must be patched before calling podman --version
+    smoke_test            # reads PODMAN_UID (set by setup_user())
 
     echo
     success "=== Setup complete! ==="

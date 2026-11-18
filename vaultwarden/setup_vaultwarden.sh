@@ -85,7 +85,6 @@ unset _common_candidate _common_found
 
 trap 'error "Failed at line $LINENO (command: $BASH_COMMAND)"' ERR
 
-
 # ── Constants ─────────────────────────────────────────────────────────────────
 # Pin to a specific version for reproducible deploys. To update an existing
 # instance, bump this value and run `sudo ./setup_vaultwarden.sh update`
@@ -171,8 +170,8 @@ cmd_cert_refresh() {
     chmod 750 "$VW_CERT_DIR"
 
     tailscale cert --cert-file "/var/lib/tailscale/certs/${hostname}.crt" \
-                   --key-file  "/var/lib/tailscale/certs/${hostname}.key" \
-                   "$hostname"
+        --key-file "/var/lib/tailscale/certs/${hostname}.key" \
+        "$hostname"
 
     cp "/var/lib/tailscale/certs/${hostname}.crt" "$VW_CERT_DIR/fullchain.pem"
     cp "/var/lib/tailscale/certs/${hostname}.key" "$VW_CERT_DIR/privkey.pem"
@@ -251,22 +250,22 @@ wait_for_healthy() {
 
     info "Waiting for Vaultwarden to be ready..."
     local i
-    for (( i=1; i<=VW_HEALTH_RETRIES; i++ )); do
+    for ((i = 1; i <= VW_HEALTH_RETRIES; i++)); do
         # Use --resolve to map the Tailscale hostname to its IP so curl can
         # verify the TLS certificate's SAN properly — avoids --insecure.
         if curl -sf --resolve "${hostname}:${port}:${ts_ip}" \
-                "https://${hostname}:${port}/alive" &>/dev/null; then
+            "https://${hostname}:${port}/alive" &>/dev/null; then
             success "Vaultwarden is responding on $hostname:$port"
             return 0
         fi
         info "  Not ready yet (attempt $i/$VW_HEALTH_RETRIES)..."
         # On the final attempt, exit the loop immediately without sleeping.
-        (( i == VW_HEALTH_RETRIES )) && break
+        ((i == VW_HEALTH_RETRIES)) && break
         info "  Waiting ${VW_HEALTH_INTERVAL}s before next attempt..."
         sleep "$VW_HEALTH_INTERVAL"
     done
 
-    warn "Vaultwarden didn't respond after $(( VW_HEALTH_RETRIES * VW_HEALTH_INTERVAL ))s"
+    warn "Vaultwarden didn't respond after $((VW_HEALTH_RETRIES * VW_HEALTH_INTERVAL))s"
     return 1
 }
 
@@ -283,7 +282,7 @@ quadlet_port() {
     line=$(grep -m1 '^PublishPort=' "$VW_QUADLET_FILE" 2>/dev/null || true)
     line="${line#PublishPort=}"
     # <ip>:<hostport>:<containerport> — take the middle field.
-    printf '%s' "$(cut -d: -f2 <<< "$line")"
+    printf '%s' "$(cut -d: -f2 <<<"$line")"
 }
 
 # Rewrite the Image= line of the installed quadlet in place.
@@ -302,8 +301,8 @@ set_quadlet_image() {
         # instructions in the file's header comment must stay untouched.
         [[ "$line" == Image=* ]] && line="Image=$new_image"
         content+="$line"$'\n'
-    done < "$VW_QUADLET_FILE"
-    printf '%s' "$content" | run_as_user "$VW_SYSTEM_USER" tee "$VW_QUADLET_FILE" > /dev/null
+    done <"$VW_QUADLET_FILE"
+    printf '%s' "$content" | run_as_user "$VW_SYSTEM_USER" tee "$VW_QUADLET_FILE" >/dev/null
     chmod 644 "$VW_QUADLET_FILE"
 }
 
@@ -318,12 +317,19 @@ cmd_update() {
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --no-backup) do_backup=false; shift ;;
-            --help|-h)   usage; exit 0 ;;
-            -*)          error "Unknown option: $1" ;;
+            --no-backup)
+                do_backup=false
+                shift
+                ;;
+            --help | -h)
+                usage
+                exit 0
+                ;;
+            -*) error "Unknown option: $1" ;;
             *)
                 [[ -n "$target" ]] && error "Unexpected extra argument: $1"
-                target="$1"; shift
+                target="$1"
+                shift
                 ;;
         esac
     done
@@ -441,21 +447,31 @@ cmd_update() {
 # ══════════════════════════════════════════════════════════════════════════════
 cmd_setup() {
     # ── Parse arguments ───────────────────────────────────────────────────────
-    local hostname="${1:-}"; shift
+    local hostname="${1:-}"
+    shift
     local port=443 admin_token=""
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --port)         port="$2";         shift 2 ;;
-            --admin-token)  admin_token="$2";  shift 2 ;;
-            --help|-h)      usage; exit 0 ;;
+            --port)
+                port="$2"
+                shift 2
+                ;;
+            --admin-token)
+                admin_token="$2"
+                shift 2
+                ;;
+            --help | -h)
+                usage
+                exit 0
+                ;;
             *) error "Unknown option: $1" ;;
         esac
     done
 
     [[ -z "$hostname" ]] && error "Tailscale hostname is required"
 
-    if ! [[ "$port" =~ ^[0-9]+$ ]] || (( port < 1 || port > 65535 )); then
+    if ! [[ "$port" =~ ^[0-9]+$ ]] || ((port < 1 || port > 65535)); then
         error "Invalid port '$port' — must be an integer between 1 and 65535"
     fi
 
@@ -485,7 +501,7 @@ cmd_setup() {
     local actual_hostname
     actual_hostname=$(tailscale status --json 2>/dev/null \
         | jq -r '.Self.DNSName | rtrimstr(".")' \
-        2>/dev/null || echo "")
+            2>/dev/null || echo "")
     if [[ -z "$actual_hostname" ]]; then
         warn "Could not verify Tailscale hostname (MagicDNS may not be enabled)."
         warn "Continuing with supplied hostname: $hostname"
@@ -539,7 +555,7 @@ cmd_setup() {
         warn "If you still have the token it contained, that's fine — it won't be reused."
         exit 1
     fi
-    cat > "$token_reveal_file" << EOF
+    cat >"$token_reveal_file" <<EOF
 Vaultwarden admin token — delete this file after noting the token down.
 Generated: $(date)
 
@@ -594,7 +610,7 @@ EOF
     # ample headroom. `tailscale cert` is a no-op if the cert is still fresh,
     # and cmd_cert_refresh() skips the Vaultwarden restart if the cert
     # fingerprint is unchanged.
-    cat > /etc/cron.d/vaultwarden-cert-refresh << CRON_EOF
+    cat >/etc/cron.d/vaultwarden-cert-refresh <<CRON_EOF
 # Vaultwarden Tailscale cert refresh — managed by setup_vaultwarden.sh
 0 4 * * * root $INSTALLED_SCRIPT cert-refresh $hostname >> /var/log/vaultwarden-cert-refresh.log 2>&1
 CRON_EOF
@@ -603,7 +619,7 @@ CRON_EOF
     # ── Step 5: Write env config ──────────────────────────────────────────────
     info "Step 5: Writing Vaultwarden config to $VW_ENV_FILE..."
 
-    cat > "$VW_ENV_FILE" << EOF
+    cat >"$VW_ENV_FILE" <<EOF
 # Vaultwarden environment configuration
 # Managed by setup_vaultwarden.sh
 #
@@ -664,9 +680,9 @@ EOF
     # Using > instead of sed -i also preserves the chown/chmod applied above
     # (sed -i replaces the inode on Linux, resetting ownership to root:root).
     local env_content
-    env_content=$(< "$VW_ENV_FILE")
+    env_content=$(<"$VW_ENV_FILE")
     env_content="${env_content/ADMIN_TOKEN_PLACEHOLDER/$admin_token_hash}"
-    printf '%s\n' "$env_content" > "$VW_ENV_FILE"
+    printf '%s\n' "$env_content" >"$VW_ENV_FILE"
 
     success "Config written (permissions: root-only read)"
 
@@ -678,7 +694,7 @@ EOF
 
     run_as_user "$VW_SYSTEM_USER" mkdir -p "$VW_QUADLET_DIR"
 
-    run_as_user "$VW_SYSTEM_USER" tee "$VW_QUADLET_FILE" > /dev/null << EOF
+    run_as_user "$VW_SYSTEM_USER" tee "$VW_QUADLET_FILE" >/dev/null <<EOF
 # Vaultwarden — managed by setup_vaultwarden.sh
 # Quadlet generates vaultwarden.service from this file.
 #
@@ -774,7 +790,7 @@ EOF
 # USAGE
 # ══════════════════════════════════════════════════════════════════════════════
 usage() {
-    cat << EOF
+    cat <<EOF
 Vaultwarden Setup Script (Podman + Tailscale edition)
 
 Sets up a Vaultwarden instance (self-hosted Bitwarden-compatible password
@@ -862,10 +878,13 @@ EOF
 # ENTRYPOINT
 # ══════════════════════════════════════════════════════════════════════════════
 case "${1:-}" in
-    harden)       cmd_harden ;;
-    update)       shift; cmd_update "$@" ;;
+    harden) cmd_harden ;;
+    update)
+        shift
+        cmd_update "$@"
+        ;;
     cert-refresh) cmd_cert_refresh "${2:-}" ;;
-    --help|-h)    usage ;;
+    --help | -h) usage ;;
     "")
         usage >&2
         exit 1
