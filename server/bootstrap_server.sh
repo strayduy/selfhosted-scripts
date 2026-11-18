@@ -150,7 +150,11 @@ print_plan() {
     info "SSH will be configured on port: $SSH_PORT"
     if [[ "$INSTALL_TAILSCALE" == true ]]; then
         info "Tailscale: ENABLED"
-        [[ "$TS_SSH" == true ]] && info "  → Tailscale SSH enabled (SSH port closed to public)"
+        # if/fi, not `[[ ]] && info`: as the function's last command, a false
+        # test would become its return status and trip set -e in main.
+        if [[ "$TS_SSH" == true ]]; then
+            info "  → Tailscale SSH enabled (SSH port closed to public)"
+        fi
     else
         info "Tailscale: not requested (pass --tailscale to enable)"
     fi
