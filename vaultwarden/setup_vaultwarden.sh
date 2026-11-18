@@ -100,7 +100,7 @@ trap 'error "Failed at line $LINENO (command: $BASH_COMMAND)"' ERR
 #   4. Roll existing instances forward with `sudo ./setup_vaultwarden.sh update`.
 #      Do NOT re-run `setup` to update — it rewrites the env file with a fresh
 #      admin token and undoes `harden`.
-VW_IMAGE="docker.io/vaultwarden/server:1.35.4@sha256:43498a94b22f9563f2a94b53760ab3e710eefc0d0cac2efda4b12b9eb8690664"
+VW_IMAGE="docker.io/vaultwarden/server:1.37.5@sha256:4fe17f415f90087377d37c755e0ea3cf189dcc6794e49cdd2a9adbb4937d9e1f"
 
 # Dedicated unprivileged system user — Podman runs rootless under this account
 # so a container escape cannot yield root on the host.
