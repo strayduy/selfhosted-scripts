@@ -4,7 +4,8 @@
 #
 # Hardens a freshly-provisioned Ubuntu 24.04 droplet: creates an admin user,
 # locks down sshd, enables UFW + fail2ban + unattended-upgrades, applies kernel
-# hardening, and optionally joins the machine to a Tailscale network.
+# hardening, pins GitHub's SSH host keys (for git over a forwarded agent, see
+# dosb), and optionally joins the machine to a Tailscale network.
 #
 # Usage:
 #   ./bootstrap_server.sh <username> [ssh_port] [--tailscale] [--ts-ssh]
@@ -399,6 +400,8 @@ ClientAliveCountMax 2
 X11Forwarding no
 UseDNS no
 PermitUserEnvironment no
+# dosb forwards a GitHub-only agent; explicit so verification catches overrides.
+AllowAgentForwarding yes
 EOF
     chmod 644 "$dropin"
 
@@ -433,6 +436,7 @@ verify_sshd_effective_config() {
         "permitrootlogin no"
         "pubkeyauthentication yes"
         "allowusers $USERNAME"
+        "allowagentforwarding yes"
     )
     local line
     for line in "${expected[@]}"; do
@@ -449,7 +453,66 @@ verify_sshd_effective_config() {
     fi
 }
 
-# ── Step 8: Configure kernel security parameters ──────────────────────────────
+# ── Step 8: Configure SSH client for GitHub ───────────────────────────────────
+# dosb's connect-droplet forwards a GitHub-only ssh-agent from the laptop, so
+# git can pull/push here without any GitHub key on the droplet (see
+# client/digitalocean/dosb/README.md). This step makes that work smoothly.
+
+# GitHub's SSH host keys, pinned so the first `git fetch` on a fresh droplet
+# can't be man-in-the-middled (and doesn't stop at a trust-on-first-use prompt).
+# Verify against https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints
+# To update after a GitHub key rotation:
+#   curl -fsS https://api.github.com/meta | jq -r '.ssh_keys[]'
+# then check `ssh-keygen -lf` of each line against the fingerprints page.
+GITHUB_HOST_KEYS=(
+    "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"
+    "github.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQEezOmxkZMy7opKgwFB9nkt5YRrYMjNuG5N87uRgg6CLrbo5wAdT/y6v0mKV0U2w0WZ2YB/++Tpockg="
+    "github.com ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCj7ndNxQowgcQnjshcLrqPEiiphnt+VTTvDP6mHBL9j1aNUkY4Ue1gvwnGLVlOhGeYrnZaMgRK6+PKCUXaDbC7qtbW8gIkhL7aGCsOr/C56SJMy/BCZfxd1nWzAOxSDPgVsmerOBYfNqltV9/hWCqBywINIR+5dIg6JTJ72pcEpEjcYgXkE2YEFXV1JHnsKgbLWNlhScqb2UmyRkQyytRLtL+38TGxkxCflmO+5Z8CSSNY7GidjMIZ7Q4zMjA2n1nGrlTDkzwDCsw+wqFPGQA179cnfGWOWRVruj16z6XyvxvjJwbz0wQZ75XK5tKSb7FNyeIEs4TT4jk+S4dhPeAUC5y+bDYirYgM4GC7uEnztnZyaVWQ7B381AK4Qdrwt51ZqExKbQpTUNn+EjqoTwvqNj4kqx5QUCI0ThS/YkOxJCXmPUWZbhjpCg56i+2aB6CmK2JGhn57K5mj0MNdBXA4/WnwH6XoPWJzK5Nyu2zB3nAZp+S5hpQs+p1vN1/wsjk="
+)
+
+configure_github_ssh_client() {
+    info "Step 8: Configuring SSH client for GitHub..."
+
+    # The system-wide known_hosts file. Ubuntu doesn't ship one and ssh has no
+    # .d directory for it, so this script owns the whole file.
+    {
+        echo "# Managed by bootstrap_server.sh — re-run the script rather than editing."
+        printf '%s\n' "${GITHUB_HOST_KEYS[@]}"
+    } >/etc/ssh/ssh_known_hosts
+    chmod 644 /etc/ssh/ssh_known_hosts
+
+    # Stable agent socket for tmux. A forwarded agent's socket path changes on
+    # every login, so tmux panes started in an earlier session point at a dead
+    # socket after a reconnect. sshd runs /etc/ssh/sshrc for every session
+    # (whatever the login shell — zsh doesn't read /etc/profile.d), and it
+    # repoints ~/.ssh/agent.sock at the current socket. sshd skips its xauth
+    # step when sshrc exists; harmless since X11Forwarding is off.
+    # It is NOT run for users who have their own ~/.ssh/rc.
+    cat >/etc/ssh/sshrc <<'EOF'
+# Managed by bootstrap_server.sh — re-run the script rather than editing.
+# Point ~/.ssh/agent.sock at this session's forwarded agent; tmux panes use
+# that path (see /etc/tmux.conf), so they survive reconnects.
+if [ -n "$SSH_AUTH_SOCK" ] && [ -S "$SSH_AUTH_SOCK" ] && [ -d "$HOME/.ssh" ]; then
+    ln -sfn "$SSH_AUTH_SOCK" "$HOME/.ssh/agent.sock"
+fi
+EOF
+    chmod 644 /etc/ssh/sshrc
+
+    # Panes inherit tmux's global SSH_AUTH_SOCK (the stable symlink). The
+    # update-environment list is tmux's default minus SSH_AUTH_SOCK; leaving it
+    # in would copy the session's direct socket over the global value.
+    # A user ~/.tmux.conf is read afterwards and can override this.
+    cat >/etc/tmux.conf <<'EOF'
+# Managed by bootstrap_server.sh — re-run the script rather than editing.
+set-environment -g SSH_AUTH_SOCK "$HOME/.ssh/agent.sock"
+set -g update-environment "DISPLAY KRB5CCNAME SSH_ASKPASS SSH_AGENT_PID SSH_CONNECTION WINDOWID XAUTHORITY"
+EOF
+    chmod 644 /etc/tmux.conf
+
+    success "GitHub host keys pinned; tmux agent socket configured"
+}
+
+# ── Step 9: Configure kernel security parameters ──────────────────────────────
 
 # Write the complete 99-hardening.conf in one place so that every re-run
 # produces the same file.  Both network/kernel params AND swap-tuning params
@@ -489,7 +552,7 @@ EOF
 }
 
 configure_sysctl_hardening() {
-    info "Step 8: Configuring kernel security parameters..."
+    info "Step 9: Configuring kernel security parameters..."
     # Delegate to write_sysctl_hardening() so the file is always written
     # atomically and completely — including swap-related sysctls — on every
     # run.  This prevents configure_swap()'s early-return path from silently
@@ -499,10 +562,10 @@ configure_sysctl_hardening() {
     success "Kernel security parameters configured"
 }
 
-# ── Step 9: Secure shared memory ──────────────────────────────────────────────
+# ── Step 10: Secure shared memory ─────────────────────────────────────────────
 
 secure_shared_memory() {
-    info "Step 9: Securing shared memory..."
+    info "Step 10: Securing shared memory..."
     # noexec: prevent executing binaries from shared memory
     # nosuid: prevent setuid/setgid bits from taking effect
     # nodev:  prevent device files in shared memory
@@ -530,10 +593,10 @@ secure_shared_memory() {
     success "Shared memory secured via /etc/fstab and remounted"
 }
 
-# ── Step 10: Set up UFW firewall ──────────────────────────────────────────────
+# ── Step 11: Set up UFW firewall ──────────────────────────────────────────────
 
 configure_ufw() {
-    info "Step 10: Configuring UFW firewall..."
+    info "Step 11: Configuring UFW firewall..."
     # NOTE: Only SSH is opened by default. If this server runs a web application,
     # manually open the required ports after provisioning:
     #   ufw allow 80/tcp
@@ -553,10 +616,10 @@ configure_ufw() {
     success "UFW firewall configured (SSH port: $SSH_PORT — add web ports manually if needed)"
 }
 
-# ── Step 11: Configure Fail2Ban ───────────────────────────────────────────────
+# ── Step 12: Configure Fail2Ban ───────────────────────────────────────────────
 
 configure_fail2ban() {
-    info "Step 11: Configuring Fail2Ban..."
+    info "Step 12: Configuring Fail2Ban..."
     # backend=systemd reads sshd's journal directly, so no logpath is needed.
     # No mail actions: there's no MTA on the droplet.
     # ignoreip includes Tailscale's CGNAT range so a fumbled login from your
@@ -580,10 +643,10 @@ EOF
     success "Fail2Ban configured and started"
 }
 
-# ── Step 12: Configure automatic security updates ─────────────────────────────
+# ── Step 13: Configure automatic security updates ─────────────────────────────
 
 configure_unattended_upgrades() {
-    info "Step 12: Configuring automatic security updates..."
+    info "Step 13: Configuring automatic security updates..."
     # Drop-in rather than overwriting the package-owned 50unattended-upgrades
     # (which would trigger conffile conflicts on upgrade). Later files win for
     # scalar settings; the stock file's Allowed-Origins (security + ESM) is
@@ -610,10 +673,10 @@ EOF
     success "Automatic security updates configured"
 }
 
-# ── Step 13: Configure swap file ──────────────────────────────────────────────
+# ── Step 14: Configure swap file ──────────────────────────────────────────────
 
 configure_swap() {
-    info "Step 13: Configuring swap file..."
+    info "Step 14: Configuring swap file..."
     # Each part (create, fstab entry, activation) is checked independently so
     # a run interrupted halfway is completed rather than skipped on re-run.
     if [[ -f /swapfile ]]; then
@@ -656,19 +719,19 @@ create_swapfile() {
     mkswap /swapfile
 }
 
-# ── Step 14: Configure chrony for time synchronization ────────────────────────
+# ── Step 15: Configure chrony for time synchronization ────────────────────────
 
 configure_chrony() {
-    info "Step 14: Configuring time synchronization..."
+    info "Step 15: Configuring time synchronization..."
     systemctl enable chrony
     systemctl start chrony
     success "Time synchronization configured"
 }
 
-# ── Step 15: Disable unused services ──────────────────────────────────────────
+# ── Step 16: Disable unused services ──────────────────────────────────────────
 
 disable_unused_services() {
-    info "Step 15: Disabling unused services..."
+    info "Step 16: Disabling unused services..."
     local services_to_disable=(avahi-daemon cups isc-dhcp-server isc-dhcp-server6 rpcbind nfs-server)
 
     for service in "${services_to_disable[@]}"; do
@@ -681,10 +744,10 @@ disable_unused_services() {
     success "Unused services disabled"
 }
 
-# ── Step 16: Configure AppArmor ───────────────────────────────────────────────
+# ── Step 17: Configure AppArmor ───────────────────────────────────────────────
 
 configure_apparmor() {
-    info "Step 16: Configuring AppArmor..."
+    info "Step 17: Configuring AppArmor..."
     # AppArmor is enabled and enforcing by default on Ubuntu; just make sure.
     #
     # Do NOT run aa-enforce over /etc/apparmor.d. Many stock 24.04 profiles
@@ -698,10 +761,10 @@ configure_apparmor() {
     success "AppArmor enabled (stock profiles)"
 }
 
-# ── Step 17: Configure sudo hardening ─────────────────────────────────────────
+# ── Step 18: Configure sudo hardening ─────────────────────────────────────────
 
 harden_sudo() {
-    info "Step 17: Configuring sudo hardening..."
+    info "Step 18: Configuring sudo hardening..."
     # Only the cached-credential timeout differs from Ubuntu's defaults
     # (env_reset and secure_path are already set in /etc/sudoers).
     # Deliberately not set:
@@ -718,10 +781,10 @@ EOF
     success "Sudo hardening configured"
 }
 
-# ── Step 18: Restart services to apply changes ────────────────────────────────
+# ── Step 19: Restart services to apply changes ────────────────────────────────
 
 restart_services() {
-    info "Step 18: Restarting services..."
+    info "Step 19: Restarting services..."
     restart_sshd
     systemctl restart chrony
     systemctl restart fail2ban
@@ -746,7 +809,7 @@ restart_sshd() {
     fi
 }
 
-# ── Step 19: Install and configure Tailscale (optional) ───────────────────────
+# ── Step 20: Install and configure Tailscale (optional) ───────────────────────
 
 # Add Tailscale's official apt repository (signed) so `apt-get install tailscale`
 # pulls the current stable release, verified by apt against the pinned keyring.
@@ -804,7 +867,7 @@ EOF
 }
 
 install_tailscale() {
-    info "Step 19: Installing and configuring Tailscale..."
+    info "Step 20: Installing and configuring Tailscale..."
 
     # Install Tailscale from its official signed apt repository. apt verifies
     # every package against the pinned keyring, so there's no per-.deb hash to
@@ -840,7 +903,7 @@ install_tailscale() {
     success "Tailscale configuration complete"
 }
 
-# ── Step 20: Display security status ──────────────────────────────────────────
+# ── Step 21: Display security status ──────────────────────────────────────────
 
 show_security_status() {
     info "=== SECURITY STATUS ==="
@@ -868,7 +931,7 @@ show_security_status() {
     chronyc sources || warn "chronyc sources failed (chrony may still be starting up)"
 }
 
-# ── Step 21: Final summary ────────────────────────────────────────────────────
+# ── Step 22: Final summary ────────────────────────────────────────────────────
 
 print_summary() {
     success "Server bootstrapping completed!"
@@ -906,6 +969,7 @@ print_summary() {
     info "✓ Kernel security hardening"
     info "✓ Strong password policies (pam_pwquality)"
     info "✓ SSH hardened (key-only, no root, OpenSSH default crypto)"
+    info "✓ GitHub host keys pinned; tmux-stable forwarded agent socket"
     info "✓ AppArmor (stock profiles)"
     info "✓ Time synchronization"
     info "✓ Sudo hardening (5-minute credential cache)"
@@ -936,7 +1000,7 @@ print_summary() {
     fi
 }
 
-# ── Step 22: Reboot ───────────────────────────────────────────────────────────
+# ── Step 23: Reboot ───────────────────────────────────────────────────────────
 # Several changes (sshd port on first boot, /dev/shm options, a new kernel)
 # are only fully in effect after a reboot, so always offer one. Defaults to
 # yes on a clean run, no if anything above needs attention.
@@ -985,6 +1049,7 @@ main() {
     grant_admin_privileges
     setup_user_ssh_keys
     configure_sshd
+    configure_github_ssh_client
     configure_sysctl_hardening
     secure_shared_memory
     configure_ufw
