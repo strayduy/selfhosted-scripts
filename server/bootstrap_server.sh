@@ -748,53 +748,71 @@ restart_sshd() {
 
 # ── Step 19: Install and configure Tailscale (optional) ───────────────────────
 
+# Add Tailscale's official apt repository (signed) so `apt-get install tailscale`
+# pulls the current stable release, verified by apt against the pinned keyring.
+#
+# The keyring is a binary GPG keyring, not a script, so fetching it over HTTPS
+# is not a `curl | bash`; apt's signature check is the trust anchor for every
+# package from then on. The source list is written literally rather than
+# fetched: this script only targets Ubuntu 24.04 (noble, enforced by
+# require_ubuntu), and a hardcoded file is easier to audit than one pulled at
+# runtime.
+#
+# Upgrades are NOT silent: unattended-upgrades only pulls from the origins in
+# 50unattended-upgrades (Ubuntu security + ESM), and we deliberately do not add
+# Tailscale to Allowed-Origins. Newer versions arrive only on an explicit
+# `apt-get upgrade` or a re-run of this script. To opt into unattended Tailscale
+# upgrades, add 'origin=Tailscale,codename=noble' to Allowed-Origins.
+#
+# Key rotation: if apt later reports a NO_PUBKEY/signature error, re-fetch the
+# keyring from the URL below and eyeball its fingerprint (printed at install
+# time, cross-check against https://tailscale.com/download/linux).
+install_tailscale_apt_source() {
+    local keyring="/usr/share/keyrings/tailscale-archive-keyring.gpg"
+    local list="/etc/apt/sources.list.d/tailscale.list"
+    local keyring_url="https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg"
+
+    info "Configuring Tailscale apt repository..."
+
+    # Atomic install: download to a temp file and move into place only on
+    # success, so a failed fetch can't leave a truncated keyring behind.
+    local tmp_keyring
+    tmp_keyring=$(mktemp)
+    if ! curl -fsSL "$keyring_url" -o "$tmp_keyring"; then
+        rm -f "$tmp_keyring"
+        error "Failed to download Tailscale apt keyring from $keyring_url"
+    fi
+    install -m 0644 "$tmp_keyring" "$keyring"
+    rm -f "$tmp_keyring"
+
+    # Surface the key fingerprint so it's logged and can be eyeballed.
+    if command -v gpg >/dev/null; then
+        local fpr
+        fpr=$(gpg --show-keys --with-colons "$keyring" 2>/dev/null \
+            | awk -F: '/^fpr:/{print $10; exit}')
+        [[ -n "$fpr" ]] && info "Tailscale repo key fingerprint: $fpr"
+    fi
+
+    cat >"$list" <<EOF
+# Managed by bootstrap_server.sh — Tailscale official stable repository.
+deb [signed-by=$keyring] https://pkgs.tailscale.com/stable/ubuntu noble main
+EOF
+    chmod 644 "$list"
+
+    apt-get update
+    success "Tailscale apt repository configured"
+}
+
 install_tailscale() {
     info "Step 19: Installing and configuring Tailscale..."
 
-    # Install Tailscale — pinned to a specific version with a hardcoded checksum.
-    # Pinning prevents silent supply-chain updates; you control when to upgrade.
-    # The hash is hardcoded (not fetched at runtime) so that a compromised upstream
-    # server cannot serve a matching fake .sha256 alongside a malicious .deb.
-    #
-    # To update the pin:
-    #   1. Set TS_VERSION to the desired release from https://pkgs.tailscale.com/stable/
-    #   2. Download the .deb and its .sha256 sidecar, verify on a trusted machine:
-    #        curl -fsSL https://pkgs.tailscale.com/stable/tailscale_<VER>_amd64.deb     -o /tmp/ts.deb
-    #        curl -fsSL https://pkgs.tailscale.com/stable/tailscale_<VER>_amd64.deb.sha256
-    #   3. Confirm the hash matches: sha256sum /tmp/ts.deb
-    #   4. Paste the verified hash into TS_EXPECTED_HASH below.
-    local ts_version="1.96.2"
-    local ts_deb="tailscale_${ts_version}_amd64.deb"
-    local ts_url="https://pkgs.tailscale.com/stable/${ts_deb}"
-    # SHA256 of tailscale_1.96.2_amd64.deb — verify before updating the pin (see above).
-    local ts_expected_hash="0431610d988ec54643a6beeae35f943aa3f11362577828138d367ca5aac29bc6"
-
-    # Abort early if the hardcoded hash looks malformed (must be exactly 64 lowercase hex chars).
-    if [[ ! "$ts_expected_hash" =~ ^[0-9a-f]{64}$ ]]; then
-        error "ts_expected_hash is not a valid SHA-256 hex digest. Follow the instructions in install_tailscale() to obtain and hardcode the SHA256 for tailscale_${ts_version}_amd64.deb."
-    fi
-
-    # Skip download and install if this exact version is already installed
-    local installed_version
-    installed_version=$(tailscale version 2>/dev/null | awk 'NR==1{print $1}' || true)
-    if [[ "$installed_version" == "$ts_version" ]]; then
-        warn "Tailscale ${ts_version} already installed, skipping download"
-    else
-        info "Downloading Tailscale ${ts_version}..."
-        curl -fsSL "$ts_url" -o "/tmp/${ts_deb}"
-
-        # Verify against the hardcoded hash
-        info "Verifying checksum..."
-        echo "${ts_expected_hash}  /tmp/${ts_deb}" | sha256sum --check --strict
-        success "Checksum verified"
-
-        apt-get install "${APT_OPTS[@]}" --no-install-recommends "/tmp/${ts_deb}"
-        rm -f "/tmp/${ts_deb}"
-        success "Tailscale ${ts_version} installed"
-    fi
-
-    # No unattended-upgrades blacklist needed: the pinned .deb comes from no
-    # apt source, so apt has nothing to upgrade it to. Update the pin above.
+    # Install Tailscale from its official signed apt repository. apt verifies
+    # every package against the pinned keyring, so there's no per-.deb hash to
+    # maintain and re-runs (or a manual `apt-get upgrade`) stay current with
+    # upstream stable — newer than Ubuntu's own tailscale package.
+    install_tailscale_apt_source
+    apt-get install "${APT_OPTS[@]}" --no-install-recommends tailscale
+    success "Tailscale installed ($(tailscale version 2>/dev/null | awk 'NR==1{print $1}'))"
 
     systemctl enable --now tailscaled
     install_ts_firstboot_hook
