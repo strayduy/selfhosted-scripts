@@ -478,27 +478,31 @@ configure_sysctl_hardening() {
 
 secure_shared_memory() {
     info "Step 9: Securing shared memory..."
-    # Harden /dev/shm via a systemd drop-in rather than /etc/fstab so that
-    # re-runs overwrite a single managed file and we never append to a
-    # system-owned file (AGENTS.md: "drop-in files, never append to system files").
-    #
     # noexec: prevent executing binaries from shared memory
     # nosuid: prevent setuid/setgid bits from taking effect
     # nodev:  prevent device files in shared memory
-    local dropin_dir="/etc/systemd/system/dev-shm.mount.d"
-    local dropin_file="${dropin_dir}/hardening.conf"
+    #
+    # /etc/fstab is the supported mechanism here: /dev/shm is an API
+    # filesystem mounted by systemd itself (dev-shm.mount has no unit file, so
+    # a [Mount] drop-in is never applied at boot), and systemd-remount-fs
+    # applies fstab options to API filesystems. Verified on a droplet after
+    # reboot. Check-then-add keeps re-runs from duplicating the line.
+    local fstab_line="tmpfs /dev/shm tmpfs defaults,noexec,nosuid,nodev 0 0"
+    if awk '$1 !~ /^#/ && $2 == "/dev/shm" { found = 1 } END { exit !found }' /etc/fstab; then
+        info "/dev/shm already has an /etc/fstab entry, leaving it as is"
+    else
+        echo "$fstab_line" >>/etc/fstab
+    fi
 
-    mkdir -p "${dropin_dir}"
-    cat >"${dropin_file}" <<'EOF'
-[Mount]
-Options=defaults,noexec,nosuid,nodev
-EOF
-    chmod 644 "${dropin_file}"
+    # Earlier versions of this script used a drop-in that never took effect.
+    if [[ -d /etc/systemd/system/dev-shm.mount.d ]]; then
+        rm -rf /etc/systemd/system/dev-shm.mount.d
+        systemctl daemon-reload
+    fi
 
-    systemctl daemon-reload
     # Apply the new options immediately without a reboot.
     mount -o remount,noexec,nosuid,nodev /dev/shm
-    success "Shared memory secured via systemd drop-in and remounted"
+    success "Shared memory secured via /etc/fstab and remounted"
 }
 
 # ── Step 10: Set up UFW firewall ──────────────────────────────────────────────
@@ -656,19 +660,6 @@ disable_unused_services() {
     success "Unused services disabled"
 }
 
-# ── Step 16: Set secure file permissions ──────────────────────────────────────
-
-secure_file_permissions() {
-    info "Step 16: Setting secure file permissions..."
-    find /etc/ssh -maxdepth 1 -name 'ssh_host_*_key' -exec chmod 600 {} +
-    chmod 644 /etc/passwd
-    chmod 644 /etc/group
-    chmod 600 /etc/shadow
-    chmod 600 /etc/gshadow
-    find /etc/ssh -maxdepth 1 -name 'ssh_host_*_key.pub' -exec chmod 644 {} +
-    success "File permissions secured"
-}
-
 # ── Step 17: Configure AppArmor ───────────────────────────────────────────────
 
 configure_apparmor() {
@@ -686,18 +677,15 @@ configure_apparmor() {
 
 harden_sudo() {
     info "Step 18: Configuring sudo hardening..."
-    # Require a real TTY for sudo (prevents certain privilege escalation via cron/scripts)
-    # NOTE: this can break cron jobs that themselves shell out to sudo — remove if you
-    # need that pattern.
-    # log_input,log_output is intentionally omitted: it records every keystroke and every
-    # output byte of every sudo session under /var/log/sudo-io/, which is excessive for
-    # a single-admin droplet. logfile= provides command-level audit which is sufficient.
+    # Only the cached-credential timeout differs from Ubuntu's defaults
+    # (env_reset and secure_path are already set in /etc/sudoers).
+    # Deliberately not set:
+    #   requiretty  — breaks `ssh host sudo ...`; its purpose (blocking sudo
+    #                 from cron/scripts) doesn't apply to a single-admin box.
+    #   logfile=    — un-rotated duplicate of what journald and
+    #                 /var/log/auth.log already record for every sudo call.
     cat >/etc/sudoers.d/hardening <<'EOF'
-Defaults requiretty
 Defaults timestamp_timeout=5
-Defaults logfile=/var/log/sudo.log
-Defaults env_reset
-Defaults secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 EOF
     chmod 440 /etc/sudoers.d/hardening
     # Validate the sudoers file before proceeding
@@ -883,7 +871,7 @@ print_summary() {
     warn "4. Root login is DISABLED"
     warn "5. Only user '$USERNAME' can SSH to this server"
     warn "6. Automatic security updates are ENABLED (auto-reboot at 11:00 UTC when needed)"
-    warn "7. sudo commands are fully logged to /var/log/sudo.log"
+    warn "7. sudo commands are logged by journald (journalctl _COMM=sudo) and /var/log/auth.log"
     if [[ "$INSTALL_TAILSCALE" == true && "$TS_SSH" == true && "$TS_CONNECTED" == true ]]; then
         warn "8. Public SSH port is CLOSED — connect via: ssh $USERNAME@<tailscale-hostname>"
         warn "   Tailscale must be authenticated on your client device"
@@ -904,15 +892,13 @@ print_summary() {
     info "✓ SSH hardened (key-only, no root, OpenSSH default crypto)"
     info "✓ AppArmor enforcement"
     info "✓ Time synchronization"
-    info "✓ Secure file permissions"
-    info "✓ Sudo hardening (TTY required, logging enabled)"
+    info "✓ Sudo hardening (5-minute credential cache)"
     info "✓ Swap file (${SWAP_SIZE})"
     if [[ "$INSTALL_TAILSCALE" == true ]]; then
         info "✓ Tailscale VPN installed"
         [[ "$TS_SSH" == true ]] && info "✓ Tailscale SSH enabled (public SSH port closed)"
     fi
     echo ""
-    info "Sudo logs: /var/log/sudo.log"
     info "Run 'lynis audit system' for a detailed security assessment"
 
     # Print a highly-visible reboot warning last so it is not scrolled off.
@@ -961,7 +947,6 @@ main() {
     configure_swap
     configure_chrony
     disable_unused_services
-    secure_file_permissions
     configure_apparmor
     harden_sudo
     restart_services

@@ -71,7 +71,7 @@ What it configures:
 - pam_pwquality password policy (enforced before the admin password is set).
 - Kernel hardening via `/etc/sysctl.d/99-hardening.conf`.
 - 2 G swap file, `vm.swappiness=10`.
-- chrony, AppArmor enforcement, sudo logging/hardening.
+- chrony, AppArmor enforcement, `noexec,nosuid,nodev` on `/dev/shm`, 5-minute sudo credential cache.
 - Optional Tailscale install (pinned version, hash-verified) + Tailscale SSH.
 
 The script is **partly idempotent** — most steps are safe to re-run, but it's
