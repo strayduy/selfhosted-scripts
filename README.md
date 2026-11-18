@@ -67,7 +67,7 @@ What it configures:
 - Hardens `sshd` via `/etc/ssh/sshd_config.d/00-bootstrap.conf` (no password auth, no root login, custom port) and verifies the effective config with `sshd -T`.
 - UFW firewall — SSH only by default; web ports must be opened manually.
 - Fail2Ban for `sshd` (12 h bans).
-- `unattended-upgrades` for security updates.
+- `unattended-upgrades` for security updates, auto-rebooting at 11:00 UTC (4 AM PDT / 3 AM PST) when an update requires it.
 - pam_pwquality password policy (enforced before the admin password is set).
 - Kernel hardening via `/etc/sysctl.d/99-hardening.conf`.
 - 2 G swap file, `vm.swappiness=10`.

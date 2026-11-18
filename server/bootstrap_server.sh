@@ -556,21 +556,20 @@ EOF
 
 configure_unattended_upgrades() {
     info "Step 12: Configuring automatic security updates..."
-    cat >/etc/apt/apt.conf.d/50unattended-upgrades <<EOF
-Unattended-Upgrade::Allowed-Origins {
-    "\${distro_id}:\${distro_codename}";
-    "\${distro_id}:\${distro_codename}-security";
-    "\${distro_id}ESMApps:\${distro_codename}-apps-security";
-    "\${distro_id}ESM:\${distro_codename}-infra-security";
-};
-
-Unattended-Upgrade::Package-Blacklist {
-};
-
-Unattended-Upgrade::DevRelease "false";
+    # Drop-in rather than overwriting the package-owned 50unattended-upgrades
+    # (which would trigger conffile conflicts on upgrade). Later files win for
+    # scalar settings; the stock file's Allowed-Origins (security + ESM) is
+    # what we want, so it isn't repeated here.
+    #
+    # Automatic-Reboot only fires when /var/run/reboot-required exists, i.e.
+    # when an update actually needs it. The time is in the server's timezone,
+    # which is UTC on droplets: 11:00 UTC = 4 AM PDT / 3 AM PST.
+    cat >/etc/apt/apt.conf.d/52bootstrap-unattended-upgrades <<EOF
+// Managed by bootstrap_server.sh
 Unattended-Upgrade::Remove-Unused-Dependencies "true";
-Unattended-Upgrade::Automatic-Reboot "false";
-Unattended-Upgrade::Automatic-Reboot-Time "02:00";
+Unattended-Upgrade::Automatic-Reboot "true";
+Unattended-Upgrade::Automatic-Reboot-WithUsers "true";
+Unattended-Upgrade::Automatic-Reboot-Time "11:00";
 EOF
 
     cat >/etc/apt/apt.conf.d/20auto-upgrades <<EOF
@@ -769,13 +768,8 @@ install_tailscale() {
         success "Tailscale ${ts_version} installed"
     fi
 
-    # Prevent unattended-upgrades from silently upgrading Tailscale.
-    # You decide when to upgrade — update the pin above deliberately.
-    if ! grep -q "tailscale" /etc/apt/apt.conf.d/50unattended-upgrades; then
-        sed -i '/Unattended-Upgrade::Package-Blacklist {/a\    "tailscale";' \
-            /etc/apt/apt.conf.d/50unattended-upgrades
-        success "Tailscale pinned — excluded from automatic upgrades"
-    fi
+    # No unattended-upgrades blacklist needed: the pinned .deb comes from no
+    # apt source, so apt has nothing to upgrade it to. Update the pin above.
 
     # Bring Tailscale up
     if [[ -n "$TS_AUTHKEY" ]]; then
@@ -876,7 +870,7 @@ print_summary() {
     warn "3. Password authentication is DISABLED"
     warn "4. Root login is DISABLED"
     warn "5. Only user '$USERNAME' can SSH to this server"
-    warn "6. Automatic security updates are ENABLED"
+    warn "6. Automatic security updates are ENABLED (auto-reboot at 11:00 UTC when needed)"
     warn "7. sudo commands are fully logged to /var/log/sudo.log"
     if [[ "$INSTALL_TAILSCALE" == true && "$TS_SSH" == true && "$TS_CONNECTED" == true ]]; then
         warn "8. Public SSH port is CLOSED — connect via: ssh $USERNAME@<tailscale-hostname>"
