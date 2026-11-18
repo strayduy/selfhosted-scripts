@@ -40,6 +40,15 @@ TS_CONNECTED=false
 TS_SSH=false
 SWAP_SIZE="2G"
 REBOOT_REQUIRED=false
+# Warnings that mean "look at this before rebooting" (see serious_warn).
+SERIOUS_WARNINGS=()
+
+# warn() + remember the message so the end-of-run summary and reboot prompt
+# can surface it again.
+serious_warn() {
+    warn "$*"
+    SERIOUS_WARNINGS+=("$*")
+}
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
 
@@ -297,45 +306,45 @@ setup_user_ssh_keys() {
 configure_sshd() {
     info "Step 7: Configuring SSH security settings..."
     local sshd_config="/etc/ssh/sshd_config"
+    local dropin="/etc/ssh/sshd_config.d/00-bootstrap.conf"
 
-    # Always restore from the original pristine backup if one exists,
-    # otherwise create it now. This makes the step safe to re-run —
-    # we never layer sed edits or appended blocks on top of each other.
+    # Older versions of this script edited sshd_config in place and kept a
+    # pristine copy. Restore it once so stale settings don't linger alongside
+    # the drop-in, then retire the backup.
     local pristine_backup="/etc/ssh/sshd_config.pristine"
-    if [[ ! -f "$pristine_backup" ]]; then
-        cp "$sshd_config" "$pristine_backup"
-        info "Saved pristine sshd_config backup to $pristine_backup"
+    if [[ -f "$pristine_backup" ]]; then
+        cp "$sshd_config" "$sshd_config.backup.$(date +%Y%m%d_%H%M%S)"
+        mv "$pristine_backup" "$sshd_config"
+        info "Restored stock sshd_config (settings now live in $dropin)"
     fi
 
-    # Take a timestamped backup for this run, then reset to pristine
-    cp "$sshd_config" "$sshd_config.backup.$(date +%Y%m%d_%H%M%S)"
-    cp "$pristine_backup" "$sshd_config"
-
-    # Configure SSH settings
-    sed -i -E "s/^#?Port 22$/Port $SSH_PORT/" "$sshd_config"
-    sed -i -E 's/^#?PasswordAuthentication\s+\S+/PasswordAuthentication no/' "$sshd_config"
-    sed -i -E 's/^#?PermitRootLogin\s+\S+/PermitRootLogin no/' "$sshd_config"
-    sed -i -E 's/^#?PubkeyAuthentication\s+\S+/PubkeyAuthentication yes/' "$sshd_config"
-
-    # Add additional security settings (safe to append — we always start from pristine)
-    cat >>"$sshd_config" <<EOF
-
-# Additional Security Settings
-# Note: 'Protocol 2' was removed in OpenSSH 7.6 — SSHv1 is gone, no directive needed
+    # Ubuntu's sshd_config begins with 'Include /etc/ssh/sshd_config.d/*.conf'
+    # and sshd uses the FIRST value it sees for each keyword. A 00- drop-in
+    # therefore wins over both the main file and cloud-init's
+    # 50-cloud-init.conf, which may set 'PasswordAuthentication yes'.
+    #
+    # Ciphers/MACs/KexAlgorithms are deliberately left at the OpenSSH defaults:
+    # they're maintained upstream and include the post-quantum
+    # sntrup761x25519 key exchange, which a hand-pinned list would drop.
+    cat >"$dropin" <<EOF
+# Managed by bootstrap_server.sh — re-run the script rather than editing.
+Port $SSH_PORT
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin no
+PubkeyAuthentication yes
+PermitEmptyPasswords no
+AllowUsers $USERNAME
 MaxAuthTries 3
+LoginGraceTime 30
+MaxStartups 10:30:100
 ClientAliveInterval 300
 ClientAliveCountMax 2
-PermitEmptyPasswords no
 X11Forwarding no
 UseDNS no
-AllowUsers $USERNAME
-MaxStartups 10:30:100
-LoginGraceTime 30
 PermitUserEnvironment no
-Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr
-MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha2-512,hmac-sha2-256
-KexAlgorithms curve25519-sha256@libssh.org,diffie-hellman-group14-sha256,diffie-hellman-group16-sha512
 EOF
+    chmod 644 "$dropin"
 
     # sshd -t requires the privilege separation directory to exist,
     # but it may not be present on a fresh droplet before sshd's first start.
@@ -344,12 +353,44 @@ EOF
 
     # Validate config before restarting — catches errors before they lock you out
     if ! sshd -t; then
-        warn "sshd config validation failed — restoring backup and aborting"
-        cp "$pristine_backup" "$sshd_config"
-        exit 1
+        rm -f "$dropin"
+        error "sshd config validation failed — removed $dropin and aborted"
     fi
 
+    verify_sshd_effective_config
     success "SSH configuration updated (Port: $SSH_PORT)"
+}
+
+# Compare sshd's *effective* configuration (after all Includes) against what
+# we asked for. Catches another drop-in or the main file overriding us.
+verify_sshd_effective_config() {
+    local effective
+    effective=$(sshd -T 2>/dev/null) || {
+        serious_warn "Could not run 'sshd -T' to verify the effective SSH config"
+        return 0
+    }
+
+    local expected=(
+        "port $SSH_PORT"
+        "passwordauthentication no"
+        "kbdinteractiveauthentication no"
+        "permitrootlogin no"
+        "pubkeyauthentication yes"
+        "allowusers $USERNAME"
+    )
+    local line
+    for line in "${expected[@]}"; do
+        if ! grep -qxF "$line" <<<"$effective"; then
+            serious_warn "sshd effective config is missing '$line' — check /etc/ssh/sshd_config.d/"
+        fi
+    done
+
+    # Port is cumulative across files; make sure nothing adds a second one.
+    local port_count
+    port_count=$(grep -c '^port ' <<<"$effective" || true)
+    if ((port_count != 1)); then
+        serious_warn "sshd will listen on $port_count ports: $(grep '^port ' <<<"$effective" | tr '\n' ' ')"
+    fi
 }
 
 # ── Step 8: Configure kernel security parameters ──────────────────────────────
@@ -620,10 +661,28 @@ EOF
 
 restart_services() {
     info "Step 19: Restarting services..."
-    systemctl restart ssh
+    restart_sshd
     systemctl restart chrony
     systemctl restart fail2ban
     success "Services restarted"
+}
+
+# On Ubuntu 24.04 sshd is socket-activated: ssh.socket owns the listening port
+# and sshd-socket-generator derives it from sshd_config at daemon-reload.
+# Restarting ssh.service alone leaves the socket on the old port.
+restart_sshd() {
+    systemctl daemon-reload
+    if systemctl is-enabled --quiet ssh.socket 2>/dev/null; then
+        systemctl restart ssh.socket
+    else
+        systemctl restart ssh
+    fi
+
+    if ss -Hltn "sport = :$SSH_PORT" | grep -q .; then
+        success "sshd is listening on port $SSH_PORT"
+    else
+        serious_warn "Nothing is listening on port $SSH_PORT yet — it should be after a reboot."
+    fi
 }
 
 # ── Step 20: Install and configure Tailscale (optional) ───────────────────────
@@ -799,7 +858,7 @@ print_summary() {
     info "✓ Automatic security updates"
     info "✓ Kernel security hardening"
     info "✓ Strong password policies (pam_pwquality)"
-    info "✓ SSH hardened (modern ciphers/MACs/KEX only)"
+    info "✓ SSH hardened (key-only, no root, OpenSSH default crypto)"
     info "✓ AppArmor enforcement"
     info "✓ Time synchronization"
     info "✓ Secure file permissions"

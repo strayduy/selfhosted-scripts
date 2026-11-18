@@ -64,7 +64,7 @@ Usage: bootstrap_server.sh <username> [ssh_port] [--tailscale] [--ts-ssh]
 What it configures:
 
 - Creates an admin user, grants `sudo`, copies root's `authorized_keys`.
-- Hardens `sshd` (no password auth, no root login, modern ciphers/MACs/KEX, custom port).
+- Hardens `sshd` via `/etc/ssh/sshd_config.d/00-bootstrap.conf` (no password auth, no root login, custom port) and verifies the effective config with `sshd -T`.
 - UFW firewall — SSH only by default; web ports must be opened manually.
 - Fail2Ban for `sshd` (12 h bans).
 - `unattended-upgrades` for security updates.
