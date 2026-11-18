@@ -204,6 +204,35 @@ install_security_packages() {
     success "Security packages installed"
 }
 
+# ── Step 3: Configure password policies ───────────────────────────────────────
+
+# Runs before create_user so the password chosen at the adduser prompt is
+# actually checked against the policy. SSH password auth is disabled, so this
+# governs the sudo / recovery-console password only.
+#
+# No account lockout (pam_faillock): with key-only SSH it would only guard sudo
+# and the console, and with root login disabled three typos would lock the
+# sole admin out of root. Ubuntu also ships no pam-auth-update profile for it.
+configure_password_policies() {
+    info "Step 3: Configuring password policies..."
+    # Drop-in rather than editing the package-owned /etc/security/pwquality.conf.
+    # enforce_for_root: adduser sets the password as root, which would otherwise
+    # only warn on a weak password instead of rejecting it.
+    mkdir -p /etc/security/pwquality.conf.d
+    cat >/etc/security/pwquality.conf.d/bootstrap.conf <<EOF
+# Managed by bootstrap_server.sh
+minlen = 12
+minclass = 3
+maxrepeat = 2
+dcredit = -1
+ucredit = -1
+lcredit = -1
+ocredit = -1
+enforce_for_root
+EOF
+    success "Password policies configured"
+}
+
 # ── Step 3: Create new user ───────────────────────────────────────────────────
 
 create_user() {
@@ -211,7 +240,7 @@ create_user() {
     if id "$USERNAME" &>/dev/null; then
         warn "User '$USERNAME' already exists, skipping user creation"
     else
-        adduser --gecos "" "$USERNAME"
+        adduser --comment "" "$USERNAME"
         success "User '$USERNAME' created successfully"
     fi
 }
@@ -222,40 +251,6 @@ grant_admin_privileges() {
     info "Step 4: Granting admin privileges to '$USERNAME'..."
     usermod -aG sudo "$USERNAME"
     success "Admin privileges granted to '$USERNAME'"
-}
-
-# ── Step 5: Configure password policies ───────────────────────────────────────
-
-configure_password_policies() {
-    info "Step 5: Configuring password policies..."
-    cat >/etc/security/pwquality.conf <<EOF
-# Password quality requirements
-minlen = 12
-minclass = 3
-maxrepeat = 2
-dcredit = -1
-ucredit = -1
-lcredit = -1
-ocredit = -1
-EOF
-
-    # Configure account lockout policy using pam_faillock.
-    # We configure via /etc/security/faillock.conf and let pam-auth-update manage
-    # the PAM stack — this avoids overwriting /etc/pam.d/common-auth wholesale,
-    # which would break other PAM modules and conflict with package upgrades.
-    #
-    # On Ubuntu 24.04, pam_faillock is included in the default pam-auth-update
-    # profile; enabling it here is safe and non-destructive.
-    cat >/etc/security/faillock.conf <<EOF
-deny = 3
-unlock_time = 1800
-silent
-EOF
-
-    # Enable pam_faillock via pam-auth-update (idempotent — safe to re-run)
-    pam-auth-update --enable faillock --force
-
-    success "Password policies configured"
 }
 
 # ── Step 6: Set up SSH keys for new user ──────────────────────────────────────
@@ -803,7 +798,7 @@ print_summary() {
     info "✓ Fail2Ban (12h SSH bans)"
     info "✓ Automatic security updates"
     info "✓ Kernel security hardening"
-    info "✓ Strong password policies (pam_faillock)"
+    info "✓ Strong password policies (pam_pwquality)"
     info "✓ SSH hardened (modern ciphers/MACs/KEX only)"
     info "✓ AppArmor enforcement"
     info "✓ Time synchronization"
@@ -849,9 +844,9 @@ main() {
 
     update_system
     install_security_packages
+    configure_password_policies
     create_user
     grant_admin_privileges
-    configure_password_policies
     setup_user_ssh_keys
     configure_sshd
     configure_sysctl_hardening

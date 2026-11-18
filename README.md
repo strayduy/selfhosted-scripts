@@ -68,7 +68,7 @@ What it configures:
 - UFW firewall — SSH only by default; web ports must be opened manually.
 - Fail2Ban for `sshd` (12 h bans).
 - `unattended-upgrades` for security updates.
-- pam_pwquality + pam_faillock for password policy and account lockout.
+- pam_pwquality password policy (enforced before the admin password is set).
 - Kernel hardening via `/etc/sysctl.d/99-hardening.conf`.
 - 2 G swap file, `vm.swappiness=10`.
 - chrony, AppArmor enforcement, sudo logging/hardening.
