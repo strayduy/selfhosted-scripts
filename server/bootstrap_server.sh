@@ -602,11 +602,27 @@ EOF
 
 configure_swap() {
     info "Step 13: Configuring swap file..."
+    # Each part (create, fstab entry, activation) is checked independently so
+    # a run interrupted halfway is completed rather than skipped on re-run.
     if [[ -f /swapfile ]]; then
-        warn "Swap file already exists, skipping"
-        return
+        info "Swap file already exists, not recreating"
+    else
+        create_swapfile
     fi
 
+    if ! awk '$1 == "/swapfile" { found = 1 } END { exit !found }' /etc/fstab; then
+        echo '/swapfile none swap sw 0 0' >>/etc/fstab
+    fi
+
+    if ! swapon --show=NAME --noheadings | grep -qx /swapfile; then
+        swapon /swapfile
+    fi
+    # vm.swappiness and vm.vfs_cache_pressure are written (and applied) by
+    # configure_sysctl_hardening() via write_sysctl_hardening().
+    success "Swap file ($SWAP_SIZE) configured and enabled"
+}
+
+create_swapfile() {
     # fallocate is fast but unsupported on some filesystems (e.g. btrfs, some XFS configs).
     # Fall back to dd, which is universally compatible, if fallocate fails.
     if ! fallocate -l "$SWAP_SIZE" /swapfile 2>/dev/null; then
@@ -626,13 +642,6 @@ configure_swap() {
     fi
     chmod 600 /swapfile
     mkswap /swapfile
-    swapon /swapfile
-    echo '/swapfile none swap sw 0 0' >>/etc/fstab
-    # vm.swappiness and vm.vfs_cache_pressure are already written (and
-    # applied) by configure_sysctl_hardening() via write_sysctl_hardening().
-    # Do not append here — doing so would cause duplicates on the first run
-    # and would be silently lost on any re-run that skips this function.
-    success "Swap file created ($SWAP_SIZE) and enabled"
 }
 
 # ── Step 14: Configure chrony for time synchronization ────────────────────────
