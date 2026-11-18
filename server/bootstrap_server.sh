@@ -40,6 +40,16 @@ TS_CONNECTED=false
 TS_SSH=false
 SWAP_SIZE="2G"
 REBOOT_REQUIRED=false
+# Shared apt-get flags. DEBIAN_FRONTEND=noninteractive only silences debconf;
+# dpkg still stops to ask about modified conffiles unless told what to do.
+# confdef/confold: take the package default if we never touched the file,
+# otherwise keep ours.
+APT_OPTS=(
+    -y
+    -o Dpkg::Options::=--force-confdef
+    -o Dpkg::Options::=--force-confold
+)
+
 # Settings from the previous run, loaded from STATE_FILE (see load_state).
 STATE_FILE="/etc/bootstrap_server.conf"
 PREV_SSH_PORT=""
@@ -188,7 +198,7 @@ EOF
 update_system() {
     info "Step 1: Updating system packages..."
     apt-get update
-    apt-get upgrade -y
+    apt-get upgrade "${APT_OPTS[@]}"
     _detect_kernel_upgrade
     success "System packages updated successfully"
 }
@@ -231,7 +241,9 @@ _detect_kernel_upgrade() {
 
 install_security_packages() {
     info "Step 2: Installing essential security packages..."
-    apt-get install -y \
+    # nftables (fail2ban's Debian banaction) and cron (unattended-upgrades)
+    # are Recommends but already present in the Ubuntu 24.04 server image.
+    apt-get install "${APT_OPTS[@]}" --no-install-recommends \
         fail2ban \
         ufw \
         unattended-upgrades \
@@ -763,7 +775,7 @@ install_tailscale() {
         echo "${ts_expected_hash}  /tmp/${ts_deb}" | sha256sum --check --strict
         success "Checksum verified"
 
-        apt-get install -y "/tmp/${ts_deb}"
+        apt-get install "${APT_OPTS[@]}" --no-install-recommends "/tmp/${ts_deb}"
         rm -f "/tmp/${ts_deb}"
         success "Tailscale ${ts_version} installed"
     fi
