@@ -10,6 +10,8 @@ const DEFAULT_SNAPSHOT_PREFIX: &str = "sandbox-";
 const DEFAULT_SSH_USER: &str = "root";
 const DEFAULT_SSH_PORT: u16 = 22;
 const DEFAULT_IDENTITY_FILE: &str = "~/.ssh/id_ed25519";
+const DEFAULT_GITHUB_IDENTITY_FILE: &str = "~/.ssh/github_ed25519";
+const DEFAULT_GITHUB_AGENT_SOCKET: &str = "~/.ssh/agent-github.sock";
 
 /// On-disk representation of the config file. All fields optional so we can
 /// distinguish "unset" from "set", apply defaults, and report missing required
@@ -24,6 +26,8 @@ pub struct ConfigFile {
     pub ssh_user: Option<String>,
     pub ssh_port: Option<u16>,
     pub identity_file: Option<String>,
+    pub github_identity_file: Option<String>,
+    pub github_agent_socket: Option<String>,
 }
 
 /// Fully-resolved, validated config used by the commands.
@@ -37,6 +41,10 @@ pub struct Config {
     pub ssh_user: String,
     pub ssh_port: u16,
     pub identity_file: String,
+    /// GitHub-only key held by the dedicated agent forwarded to droplets.
+    pub github_identity_file: String,
+    /// Socket of the dedicated agent that holds only `github_identity_file`.
+    pub github_agent_socket: String,
 }
 
 impl Config {
@@ -79,6 +87,12 @@ impl Config {
             identity_file: file
                 .identity_file
                 .unwrap_or_else(|| DEFAULT_IDENTITY_FILE.to_string()),
+            github_identity_file: file
+                .github_identity_file
+                .unwrap_or_else(|| DEFAULT_GITHUB_IDENTITY_FILE.to_string()),
+            github_agent_socket: file
+                .github_agent_socket
+                .unwrap_or_else(|| DEFAULT_GITHUB_AGENT_SOCKET.to_string()),
         })
     }
 }
@@ -126,6 +140,12 @@ pub mod defaults {
     pub fn identity_file() -> &'static str {
         DEFAULT_IDENTITY_FILE
     }
+    pub fn github_identity_file() -> &'static str {
+        DEFAULT_GITHUB_IDENTITY_FILE
+    }
+    pub fn github_agent_socket() -> &'static str {
+        DEFAULT_GITHUB_AGENT_SOCKET
+    }
 }
 
 #[cfg(test)]
@@ -164,6 +184,8 @@ mod tests {
         assert_eq!(cfg.ssh_user, DEFAULT_SSH_USER);
         assert_eq!(cfg.ssh_port, DEFAULT_SSH_PORT);
         assert_eq!(cfg.identity_file, DEFAULT_IDENTITY_FILE);
+        assert_eq!(cfg.github_identity_file, DEFAULT_GITHUB_IDENTITY_FILE);
+        assert_eq!(cfg.github_agent_socket, DEFAULT_GITHUB_AGENT_SOCKET);
     }
 
     #[test]
@@ -171,7 +193,8 @@ mod tests {
         let path = temp_config(
             "region = \"nyc1\"\nssh_key_name = \"laptop\"\nsize = \"s-4vcpu-8gb\"\n\
              tag = \"sandbox\"\nsnapshot_prefix = \"sbx_\"\nssh_user = \"dev\"\n\
-             ssh_port = 2222\nidentity_file = \"~/.ssh/do\"\n",
+             ssh_port = 2222\nidentity_file = \"~/.ssh/do\"\n\
+             github_identity_file = \"~/.ssh/gh\"\ngithub_agent_socket = \"/tmp/gh.sock\"\n",
         );
         let cfg = Config::load(Some(&path)).unwrap();
         std::fs::remove_file(&path).ok();
@@ -182,6 +205,8 @@ mod tests {
         assert_eq!(cfg.ssh_user, "dev");
         assert_eq!(cfg.ssh_port, 2222);
         assert_eq!(cfg.identity_file, "~/.ssh/do");
+        assert_eq!(cfg.github_identity_file, "~/.ssh/gh");
+        assert_eq!(cfg.github_agent_socket, "/tmp/gh.sock");
     }
 
     #[test]

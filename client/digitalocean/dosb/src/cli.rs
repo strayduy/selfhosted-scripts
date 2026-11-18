@@ -41,6 +41,9 @@ pub enum Command {
 
     /// SSH into an ephemeral droplet.
     ConnectDroplet(ConnectDropletArgs),
+
+    /// Create the GitHub-only SSH key and register it with your GitHub account.
+    SetupGithub(SetupGithubArgs),
 }
 
 #[derive(Debug, Args)]
@@ -119,4 +122,11 @@ pub struct ConnectDropletArgs {
     /// SSH identity file (overrides the configured default).
     #[arg(long)]
     pub identity_file: Option<String>,
+
+    /// Don't forward the dedicated GitHub agent to the droplet.
+    #[arg(long)]
+    pub no_forward_agent: bool,
 }
+
+#[derive(Debug, Args)]
+pub struct SetupGithubArgs {}

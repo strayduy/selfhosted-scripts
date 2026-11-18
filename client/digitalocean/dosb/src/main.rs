@@ -2,6 +2,7 @@ mod api;
 mod cli;
 mod commands;
 mod config;
+mod ssh_agent;
 mod ui;
 
 use anyhow::Result;
@@ -25,17 +26,24 @@ fn run() -> Result<()> {
         return commands::init::run(args, cli.config.as_deref());
     }
 
-    // Every other command needs a loaded config and an API client.
+    // Every other command needs a loaded config.
     let config = config::Config::load(cli.config.as_deref())?;
-    let client = api::Client::from_env(&config)?;
 
     let dry_run = cli.dry_run;
     if dry_run {
         ui::warn("Dry-run mode: no changes will be made.");
     }
 
+    // `setup-github` talks to GitHub (via gh), not DigitalOcean, so it must not
+    // require DIGITALOCEAN_ACCESS_TOKEN.
+    if let Command::SetupGithub(_) = &cli.command {
+        return commands::setup_github::run(&config, dry_run);
+    }
+
+    let client = api::Client::from_env(&config)?;
+
     match &cli.command {
-        Command::Init(_) => unreachable!("handled above"),
+        Command::Init(_) | Command::SetupGithub(_) => unreachable!("handled above"),
         Command::CreateDroplet(args) => {
             commands::create_droplet::run(&client, &config, args, dry_run)
         }

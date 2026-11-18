@@ -5,4 +5,5 @@ pub mod destroy_droplet;
 pub mod init;
 pub mod list_droplets;
 pub mod list_snapshots;
+pub mod setup_github;
 pub mod take_snapshot;

@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 use dialoguer::{theme::ColorfulTheme, Confirm, Input};
 
 use crate::cli::InitArgs;
+use crate::commands::setup_github;
 use crate::config::{defaults, Config, ConfigFile};
 use crate::ui;
 
@@ -64,6 +65,16 @@ pub fn run(args: &InitArgs, config_override: Option<&Path>) -> Result<()> {
         .default(defaults::identity_file().to_string())
         .interact_text()?;
 
+    let github_identity_file: String = Input::with_theme(&theme)
+        .with_prompt("GitHub-only SSH key forwarded to droplets")
+        .default(defaults::github_identity_file().to_string())
+        .interact_text()?;
+
+    let github_agent_socket: String = Input::with_theme(&theme)
+        .with_prompt("Socket for the dedicated GitHub ssh-agent")
+        .default(defaults::github_agent_socket().to_string())
+        .interact_text()?;
+
     let file = ConfigFile {
         region: Some(region),
         size: Some(size),
@@ -73,6 +84,8 @@ pub fn run(args: &InitArgs, config_override: Option<&Path>) -> Result<()> {
         ssh_user: Some(ssh_user),
         ssh_port: Some(ssh_port),
         identity_file: Some(identity_file),
+        github_identity_file: Some(github_identity_file),
+        github_agent_socket: Some(github_agent_socket),
     };
 
     let toml = toml::to_string_pretty(&file).context("serializing config")?;
@@ -84,6 +97,17 @@ pub fn run(args: &InitArgs, config_override: Option<&Path>) -> Result<()> {
 
     ui::success(&format!("Wrote config to {}", path.display()));
     ui::info("Remember to export your API token: export DIGITALOCEAN_ACCESS_TOKEN=...");
+
+    let setup_github = Confirm::with_theme(&theme)
+        .with_prompt("Set up the GitHub key for agent forwarding now (`dosb setup-github`)?")
+        .default(true)
+        .interact()?;
+    if setup_github {
+        let config = Config::load(Some(&path))?;
+        setup_github::run(&config, false)?;
+    } else {
+        ui::info("You can run `dosb setup-github` later.");
+    }
     Ok(())
 }
 

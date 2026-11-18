@@ -51,6 +51,8 @@ snapshot_prefix = "sandbox-"         # naming-convention filter for snapshots
 ssh_user        = "myuser"           # SSH login user for connect-droplet
 ssh_port        = 2222               # SSH port for connect-droplet
 identity_file   = "~/.ssh/id_ed25519" # SSH identity file for connect-droplet
+github_identity_file = "~/.ssh/github_ed25519"   # GitHub-only key (setup-github)
+github_agent_socket  = "~/.ssh/agent-github.sock" # dedicated agent forwarded to droplets
 ```
 
 - If a required value is missing everywhere, **hard-error** at runtime with a
@@ -146,6 +148,23 @@ SSHes into an ephemeral droplet.
   flags) — you land directly in the shell.
 - **Bounded SSH-readiness retry** (~30s) so "create then immediately connect"
   works while sshd is still coming up.
+- **Forwards a dedicated GitHub agent** (`-o ForwardAgent=<github_agent_socket>`)
+  so git over SSH works on the droplet without any key stored there. Before
+  exec, ensure the agent is running (start it, clearing a stale socket) and
+  holds `github_identity_file` (`ssh-add -t 8h`). Any failure here — including
+  a missing key — is a warning and the connection proceeds without forwarding.
+  `--no-forward-agent` opts out.
+
+### `setup-github`
+One-time, idempotent setup of the GitHub key forwarded by `connect-droplet`.
+Does not need the DigitalOcean token.
+
+- Requires the `gh` CLI, logged in, with the `admin:public_key` scope.
+- Generates `github_identity_file` (ed25519, no passphrase) if missing.
+- Registers it as an **authentication** key via `gh ssh-key add`, unless an
+  identical key is already on the account.
+- Verifies with `ssh -T git@github.com` (warning only on failure).
+- `init` offers to run it at the end.
 
 ---
 
