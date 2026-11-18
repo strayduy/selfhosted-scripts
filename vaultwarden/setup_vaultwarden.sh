@@ -86,13 +86,21 @@ unset _common_candidate _common_found
 trap 'error "Failed at line $LINENO (command: $BASH_COMMAND)"' ERR
 
 # ── Constants ─────────────────────────────────────────────────────────────────
-# Pin to a specific version for reproducible deploys. To update an existing
-# instance, bump this value and run `sudo ./setup_vaultwarden.sh update`
-# (or pass an explicit version: `update 1.35.5`). Do NOT re-run `setup` to
-# update — it rewrites the env file with a fresh admin token and undoes
-# `harden`.
-# v1.35.4 ships Vaultwarden 1.35.4; WebSockets are on the main port (v1.29+).
-VW_IMAGE="docker.io/vaultwarden/server:1.35.4"
+# Pinned by tag AND digest. The tag is for humans; Podman ignores it when a
+# digest is present and pulls exactly the image (multi-arch index) below, so a
+# re-pushed or compromised tag on Docker Hub can't change what runs.
+# WebSockets are on the main port (v1.29+).
+#
+# To update the pin:
+#   1. Pick a release from https://github.com/dani-garcia/vaultwarden/releases
+#   2. Look up its multi-arch index digest (the sha256 of the raw manifest
+#      bytes; use the index, not the per-arch amd64 manifest):
+#        skopeo inspect --raw docker://docker.io/vaultwarden/server:<VER> | sha256sum
+#   3. Update both the tag and the digest below.
+#   4. Roll existing instances forward with `sudo ./setup_vaultwarden.sh update`.
+#      Do NOT re-run `setup` to update — it rewrites the env file with a fresh
+#      admin token and undoes `harden`.
+VW_IMAGE="docker.io/vaultwarden/server:1.35.4@sha256:43498a94b22f9563f2a94b53760ab3e710eefc0d0cac2efda4b12b9eb8690664"
 
 # Dedicated unprivileged system user — Podman runs rootless under this account
 # so a container escape cannot yield root on the host.
