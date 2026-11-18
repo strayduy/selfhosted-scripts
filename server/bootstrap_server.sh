@@ -40,6 +40,10 @@ TS_CONNECTED=false
 TS_SSH=false
 SWAP_SIZE="2G"
 REBOOT_REQUIRED=false
+# Settings from the previous run, loaded from STATE_FILE (see load_state).
+STATE_FILE="/etc/bootstrap_server.conf"
+PREV_SSH_PORT=""
+
 # Warnings that mean "look at this before rebooting" (see serious_warn).
 SERIOUS_WARNINGS=()
 
@@ -151,6 +155,32 @@ print_plan() {
     else
         info "Tailscale: not requested (pass --tailscale to enable)"
     fi
+}
+
+# ── State file ────────────────────────────────────────────────────────────────
+# /etc/bootstrap_server.conf records the settings of the last run so re-runs
+# can clean up after themselves (e.g. drop the old SSH port's UFW rule) and
+# so the Tailscale first-boot hook knows the SSH port. Plain KEY=value lines;
+# parsed with `read`, never sourced.
+
+load_state() {
+    [[ -f "$STATE_FILE" ]] || return 0
+    local key value
+    while IFS='=' read -r key value; do
+        case "$key" in
+            SSH_PORT) [[ "$value" =~ ^[0-9]+$ ]] && PREV_SSH_PORT="$value" ;;
+        esac
+    done <"$STATE_FILE"
+}
+
+save_state() {
+    cat >"$STATE_FILE" <<EOF
+# Written by bootstrap_server.sh — settings from the last run.
+USERNAME=$USERNAME
+SSH_PORT=$SSH_PORT
+TS_SSH=$TS_SSH
+EOF
+    chmod 644 "$STATE_FILE"
 }
 
 # ── Step 1: Update installed packages ─────────────────────────────────────────
@@ -467,12 +497,19 @@ configure_ufw() {
     # manually open the required ports after provisioning:
     #   ufw allow 80/tcp
     #   ufw allow 443/tcp
-    ufw --force reset
+    #
+    # No `ufw --force reset`: on a fresh droplet there's nothing to reset, and
+    # on a re-run it would wipe ports opened later by app scripts and the
+    # tailscale0 rule. Every command below is idempotent on its own.
     ufw default deny incoming
     ufw default allow outgoing
+    if [[ -n "$PREV_SSH_PORT" && "$PREV_SSH_PORT" != "$SSH_PORT" ]]; then
+        ufw delete allow "$PREV_SSH_PORT"/tcp || true
+        info "Removed UFW rule for previous SSH port $PREV_SSH_PORT"
+    fi
     ufw allow "$SSH_PORT"/tcp
     ufw --force enable
-    success "UFW firewall configured (SSH port: $SSH_PORT only — add web ports manually if needed)"
+    success "UFW firewall configured (SSH port: $SSH_PORT — add web ports manually if needed)"
 }
 
 # ── Step 11: Configure Fail2Ban ───────────────────────────────────────────────
@@ -898,6 +935,7 @@ main() {
     require_root
     require_ubuntu 24.04
 
+    load_state
     print_plan
     prompt_ts_authkey
 
@@ -911,6 +949,7 @@ main() {
     configure_sysctl_hardening
     secure_shared_memory
     configure_ufw
+    save_state
     configure_fail2ban
     configure_unattended_upgrades
     configure_swap
