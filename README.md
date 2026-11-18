@@ -76,6 +76,9 @@ What it configures:
 - Kernel hardening via `/etc/sysctl.d/99-hardening.conf`.
 - 2 G swap file, `vm.swappiness=10`.
 - chrony, AppArmor (stock profiles), `noexec,nosuid,nodev` on `/dev/shm`, 5-minute sudo credential cache.
+- GitHub's SSH host keys pinned in `/etc/ssh/ssh_known_hosts`, plus an
+  `/etc/ssh/sshrc` + `/etc/tmux.conf` pair that keeps a forwarded agent usable
+  inside tmux across reconnects (see dosb's GitHub agent forwarding below).
 - Optional Tailscale install (pinned version, hash-verified) + Tailscale SSH.
 - With Tailscale: a cloud-init first-boot hook so droplets created from a
   snapshot get a fresh Tailscale identity (see `finalize_tailscale.sh`).
@@ -169,8 +172,23 @@ dosb list-droplets      # list ephemeral (tagged) droplets
 dosb list-snapshots     # list sandbox-prefixed snapshots
 dosb take-snapshot      # power off, snapshot, leave off
 dosb destroy-droplet    # destroy one droplet (type-the-name confirmation)
-dosb connect-droplet    # exec ssh into a droplet
+dosb connect-droplet    # exec ssh into a droplet (forwards the GitHub agent)
+dosb setup-github       # one-time: create + register the GitHub-only key via gh
 ```
+
+**GitHub access.** Droplets hold no GitHub credentials. `connect-droplet`
+forwards a dedicated laptop-side ssh-agent that holds only a GitHub key, so
+`git pull`/`push` work during attended sessions and nothing usable ends up in a
+snapshot. See the dosb README for details.
+
+Migrating from per-repo keys stored on droplets (one-time):
+
+1. Re-bootstrap a fresh droplet and take a new base snapshot.
+2. Run `dosb setup-github`, connect, and confirm `git push` works — including
+   from a tmux pane after detaching and reconnecting.
+3. Delete the old deploy keys on GitHub, then delete the old `sandbox-`
+   snapshots that contain them (DigitalOcean console).
+4. Point any `git@github.com-<repo>:` remotes back at `git@github.com:`.
 
 Safety rails: droplet operations only ever act on `ephemeral`-tagged droplets,
 and snapshot operations only on `sandbox-`prefixed images, so you can't
