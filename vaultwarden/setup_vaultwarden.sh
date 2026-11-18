@@ -557,11 +557,16 @@ cmd_setup() {
 
     # Write the raw token to a one-time reveal file, never to the terminal.
     local token_reveal_file="/root/vaultwarden-admin-token.txt"
+    # We only get here if $VW_ENV_FILE doesn't exist (checked above), so a
+    # leftover file is from a run that never finished and its token was never
+    # activated. Move it aside rather than aborting — aborting left re-runs
+    # stuck until the file was removed by hand.
     if [[ -f "$token_reveal_file" ]]; then
-        warn "$token_reveal_file already exists from a previous (partial?) run."
-        warn "Remove it first: sudo rm $token_reveal_file"
-        warn "If you still have the token it contained, that's fine — it won't be reused."
-        exit 1
+        local stale_file
+        stale_file="$token_reveal_file.$(date +%Y%m%d_%H%M%S).old"
+        mv "$token_reveal_file" "$stale_file"
+        warn "Moved unused token file from an unfinished run to $stale_file."
+        warn "Delete it: sudo rm $stale_file"
     fi
     cat >"$token_reveal_file" <<EOF
 Vaultwarden admin token — delete this file after noting the token down.
